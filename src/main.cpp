@@ -154,6 +154,14 @@ void seam_remove(vector<vector<pixel>>& pixels, vector<int>& seam, int w, int h)
         pixels[y].pop_back();
     }
 }
+vector<vector<pixel>> transpose(vector<vector<pixel>> &pixels, int w, int h)
+{
+    vector<vector<pixel>> transposed(w, vector<pixel>(h));
+    for (int y = 0; y < h; y++)
+        for (int x = 0; x < w; x++)
+            transposed[x][y] = pixels[y][x];
+    return transposed;
+}
 int main(){
     int w, h, channels;
     unsigned char *img = stbi_load("images/test.png", &w, &h, &channels, 3);
@@ -196,6 +204,25 @@ int main(){
         seam_remove(pixels, seam, w, h);
         w--;
     }
+    cout << "Vertical seams done. Width: " << w << "\n";
+
+    // --- remove 100 horizontal seams ---
+    int horizontal_seams = 100;
+    pixels = transpose(pixels, w, h);
+    swap(w, h);
+
+    for (int i = 0; i < horizontal_seams; i++)
+    {
+        auto energy = compute_energy(pixels, w, h);
+        auto seam = find_seam(energy, w, h);
+        seam_remove(pixels, seam, w, h);
+        w--;
+    }
+
+    pixels = transpose(pixels, w, h);
+    swap(w, h);
+    h -= horizontal_seams; // fix h after transposing back
+    cout << "Horizontal seams done. Height: " << h << "\n";
     vector<unsigned char> outi(w * h * 3);
     for (int y = 0; y < h; y++)
         for (int x = 0; x < w; x++)
@@ -206,7 +233,8 @@ int main(){
             outi[i + 2] = pixels[y][x].b;
         }
     stbi_write_png("carved.png", w, h, 3, outi.data(), w * 3);
-    cout << "Done. Final width: " << w << "\n";
+    cout << "Done verticval seeam. Final width: " << w << "\n";
+
     double max_energy = 0;
     // this is for normalisation
     // because each pixel should be b/w 0 to 255
