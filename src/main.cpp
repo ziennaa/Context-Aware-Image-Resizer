@@ -145,6 +145,15 @@ vector<int> find_seam(vector<vector<double>>& energy, int w, int h){
     }
     return seam;
 }
+void seam_remove(vector<vector<pixel>>& pixels, vector<int>& seam, int w, int h){
+    for(int y=0; y<h; y++){
+        int x = seam[y];
+        for(int j=x; j<w-1; j++){
+            pixels[y][j] = pixels[y][j+1];
+        }
+        pixels[y].pop_back();
+    }
+}
 int main(){
     int w, h, channels;
     unsigned char *img = stbi_load("images/test.png", &w, &h, &channels, 3);
@@ -165,6 +174,20 @@ int main(){
         img[i+2] = 0;
     }
     stbi_write_png("seam.png", w, h, 3, img, w * 3);
+    seam_remove(pixels, seam, w, h);
+    w--;
+    vector<unsigned char> out(w * h * 3);
+    for (int y = 0; y < h; y++){
+        for (int x = 0; x < w; x++)
+        {
+            int i = (y * w + x) * 3;
+            out[i] = pixels[y][x].r;
+            out[i + 1] = pixels[y][x].g;
+            out[i + 2] = pixels[y][x].b;
+        }
+    }
+    stbi_write_png("removed.png", w, h, 3, out.data(), w * 3);
+    cout << "Seam removed. New width: " << w << "\n";
     double max_energy = 0;
     // this is for normalisation
     // because each pixel should be b/w 0 to 255
