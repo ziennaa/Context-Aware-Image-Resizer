@@ -162,9 +162,19 @@ vector<vector<pixel>> transpose(vector<vector<pixel>> &pixels, int w, int h)
             transposed[x][y] = pixels[y][x];
     return transposed;
 }
-int main(){
+int main(int argc, char *argv[]){
+    if (argc < 5)
+    {
+        cout << "Usage: ./seamcarve input.png output.png <vertical_seams> <horizontal_seams>\n";
+        cout << "Example: ./seamcarve images/test.png carved.png 200 100\n";
+        return 1;
+    }
+    string input_path = argv[1];
+    string output_path = argv[2];
+    int vertical_seams = stoi(argv[3]);
+    int horizontali_seams = stoi(argv[4]);
     int w, h, channels;
-    unsigned char *img = stbi_load("images/test.png", &w, &h, &channels, 3);
+    unsigned char *img = stbi_load(input_path.c_str(), &w, &h, &channels, 3);
     if (!img)
     {
         cout << "Failed to load image\n";
@@ -197,7 +207,7 @@ int main(){
     cout<<"TESTING\n";
     stbi_write_png("removed.png", w, h, 3, out.data(), w * 3);
     cout << "TESTING SUCCESSFUL Seam removed. New width: " << w << "\n";
-    int seams_to_remove = 200;
+    int seams_to_remove = vertical_seams;
     for(int i=0; i<seams_to_remove; i++){
         auto energy = compute_energy(pixels, w, h);
         auto seam = find_seam(energy, w, h);
@@ -207,7 +217,7 @@ int main(){
     cout << "Vertical seams done. Width: " << w << "\n";
 
     // --- remove 100 horizontal seams ---
-    int horizontal_seams = 100;
+    int horizontal_seams = horizontali_seams;
     pixels = transpose(pixels, w, h);
     swap(w, h);
 
@@ -232,7 +242,7 @@ int main(){
             outi[i + 1] = pixels[y][x].g;
             outi[i + 2] = pixels[y][x].b;
         }
-    stbi_write_png("carved.png", w, h, 3, outi.data(), w * 3);
+    stbi_write_png(output_path.c_str(), w, h, 3, outi.data(), w * 3);
     cout << "Done verticval seeam. Final width: " << w << "\n";
 
     double max_energy = 0;
