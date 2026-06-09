@@ -109,6 +109,42 @@ vector<vector<double>> compute_energy(vector<vector<pixel>> &pixels, int w, int 
 
        */
 
+// dp logic
+vector<int> find_seam(vector<vector<double>>& energy, int w, int h){
+    vector<vector<double>> dp(h, vector<double>(w, 0));
+    vector<vector<int>> parent(h, vector<int>(w, -1));
+    for(int x=0; x<w; x++){
+        dp[0][x] = energy[0][x];
+    }
+    for(int y=1; y<h; y++){
+        for(int x = 0; x<w; x++){
+            double best = dp[y-1][x];
+            int best_x = x;
+            if(x-1 >= 0 && dp[y-1][x-1] < best){
+                best = dp[y-1][x-1];
+                best_x = x-1;
+            }
+            if(x+1 < w && dp[y-1][x+1] < best){
+                best = dp[y-1][x+1];
+                best_x = x+1;
+            }
+            dp[y][x] = energy[y][x] + best;
+            parent[y][x] = best_x;
+        }
+    }
+    int min_x = 0;
+    for(int x =1; x<w; x++){
+        if(dp[h-1][x] < dp[h-1][min_x]){
+            min_x = x;
+        }
+    }
+    vector<int> seam(h);
+    seam[h-1] = min_x;
+    for(int y=h-2; y>=0; y--){
+        seam[y] = parent[y+1][seam[y+1]];
+    }
+    return seam;
+}
 int main(){
     int w, h, channels;
     unsigned char *img = stbi_load("images/test.png", &w, &h, &channels, 3);
@@ -119,6 +155,16 @@ int main(){
     }
     auto pixels = load_pixels(img, w, h);
     auto energy = compute_energy(pixels, w, h);
+    auto seam = find_seam(energy, w, h);
+    // draw seam in red on original img
+    for(int y=0; y<h; y++){
+        int x = seam[y];
+        int i = (y*w+x)*3;
+        img[i] = 255;
+        img[i+1] = 0;
+        img[i+2] = 0;
+    }
+    stbi_write_png("seam.png", w, h, 3, img, w * 3);
     double max_energy = 0;
     // this is for normalisation
     // because each pixel should be b/w 0 to 255
