@@ -186,8 +186,27 @@ int main(){
             out[i + 2] = pixels[y][x].b;
         }
     }
+    cout<<"TESTING\n";
     stbi_write_png("removed.png", w, h, 3, out.data(), w * 3);
-    cout << "Seam removed. New width: " << w << "\n";
+    cout << "TESTING SUCCESSFUL Seam removed. New width: " << w << "\n";
+    int seams_to_remove = 200;
+    for(int i=0; i<seams_to_remove; i++){
+        auto energy = compute_energy(pixels, w, h);
+        auto seam = find_seam(energy, w, h);
+        seam_remove(pixels, seam, w, h);
+        w--;
+    }
+    vector<unsigned char> outi(w * h * 3);
+    for (int y = 0; y < h; y++)
+        for (int x = 0; x < w; x++)
+        {
+            int i = (y * w + x) * 3;
+            outi[i] = pixels[y][x].r;
+            outi[i + 1] = pixels[y][x].g;
+            outi[i + 2] = pixels[y][x].b;
+        }
+    stbi_write_png("carved.png", w, h, 3, outi.data(), w * 3);
+    cout << "Done. Final width: " << w << "\n";
     double max_energy = 0;
     // this is for normalisation
     // because each pixel should be b/w 0 to 255
