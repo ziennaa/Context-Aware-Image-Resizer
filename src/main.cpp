@@ -3,22 +3,157 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "../stb_image_write.h"
 #include <iostream>
+#include <vector>
+#include <cmath>
+#include <bits/stdc++.h>
 using namespace std;
+// vector for 2d arrays
+// cmath for sqrt() and pow()
+struct pixel{
+    unsigned char r, g, b;
+    // pixel DS custom
+};
+// stb - actual pixel data comes as flat 1d array not 2d grid
+// image visually looks like this:
+/*
+(0,0)(0,1)(0,2)
+(1,0)(1,1)(1,2)
+(2,0)(2,1)(2,2)
+*/
+// but stb gives this in a straight line 1 d arrary
+/*
+[R, G, B, R, G, B, R, G, B, R, G, B, R, G, B, R, G, B, R, G, B, R, G, B, R, G, B]
+ px00 px01 px02 px10 px11 px12 px20 px21 px22
+*/
+    vector<vector<pixel>>
+    load_pixels(unsigned char *img, int w, int h)
+{
+    // 2d grid each cell holds a pixel - r, g, b
+    // 1d array stb that i got convert it into 2d grid
+    vector<vector<pixel>> pixels(h, vector<pixel>(w));
+    /*
+    vector<Pixel>(w)          // one row of w pixels
+    vector<vector<Pixel>>(h, ...) // h rows of those
+    */
+    // pixels(h, vector<pixel>(w)) 
+    // makes a grid of empty pixels
+    for(int y = 0; y<h; y++)
+    // y : row number 
+    {
+        for(int x = 0; x<w; x++)
+        // c : col number
+        {
+            int i = (y*w+x) * 3;
+            // after 1st row , w = 3 second row starts at 3 so thats why
+            // converts 2d pos to 1d index with y*w+x * 3
+            // why 3? cuz each pixel takes 3 slots i.e r g b
+            // and stores r g b into a 2d grid
+            pixels[y][x] = {img[i], img[i+1], img[i+2]};
+            // r = img[i]
+            // g = img[i+1]
+            // b = img[i+2]
+        }
+    }
+    return pixels;
+    // entire 2d grid of pixels 
+    // after calling loadpixels()
+}
+
+// energy of each pixel 
+vector<vector<double>> compute_energy(vector<vector<pixel>> &pixels, int w, int h){
+    vector<vector<double>> energy(h, vector<double>(w, 0));
+    // returns a 2d grid of doubles 
+    // same size as image
+    // but each cell holds an energy value isntead of pixel
+    // initialised to 0
+    for(int y=0; y<h; y++){
+        for(int x = 0; x<w; x++){
+            // accessing each pixel in pixels
+            pixel left = pixels[y][max(x-1, 0)];
+            // max min is border handling - if youre at x = 0 // theres no left neighbour
+            pixel right = pixels[y][min(x+1, w-1)];
+            pixel up = pixels[max(y-1, 0)][x];
+            pixel down = pixels[min(y+1, h-1)][x];
+            double dx = pow(right.r - left.r, 2) + pow(right.g - left.g, 2) + pow(right.b - left.b, 2);
+            double dy = pow(down.r - up.r, 2) + pow(down.g - up.g, 2) + pow(down.b - up.b, 2);
+            energy[y][x] = sqrt(dy+dx);
+        }
+    }
+    return energy;
+}
+/*/
+[UP]
+         ↑
+[LEFT] [THIS] [RIGHT]
+         ↓
+       [DOWN]
+
+
+       col:  0    1    2    3    4
+       row0: .    .    .    .    .
+       row1: .    .    .   [UP]  .
+       row2: .    .  [LEFT][ME][RIGHT]
+       row3: .    .    .  [DOWN] .
+
+
+       col:  0    1    2
+       row2:[ME][RIGHT] .
+         ↑
+       no left neighbor exists!
+
+       Pixel left = pixels[y][max(x-1, 0)];
+       Pixel right = pixels[y][min(x+1, w-1)];
+       If x is the last column (x = w-1), then x+1 would go out of bounds. min(x+1, w-1) keeps it at the last valid column.
+
+       This works for ANY image size — 3x3, 1000x1000, anything. The max/min just handles the 4 edges safely.
+
+       */
+
 int main(){
     int w, h, channels;
-    // image width, height and how many color values per pixel
-    // stb_load will fill it for you
-    unsigned char* img = stbi_load("images/test.png", &w, &h, &channels, 3);
-    // stb_load opens the image decodes the compressed file
-    // fill w , h, channels with actual values
-    // the last argeuemtn 3 forces 3rgb
-    // pixel val : 0 to 255 therefore unsigned char
-    if(!img){
-        cout<<"Failed to load\n";
+    unsigned char *img = stbi_load("images/test.png", &w, &h, &channels, 3);
+    if (!img)
+    {
+        cout << "Failed to load image\n";
         return 1;
     }
-    cout<<"Loaded: "<<w<<"x"<<h<<"\n";
-    stbi_write_png("output.png", w, h, 3, img, w*3);
+    auto pixels = load_pixels(img, w, h);
+    auto energy = compute_energy(pixels, w, h);
+    double max_energy = 0;
+    // this is for normalisation
+    // because each pixel should be b/w 0 to 255
+    for(auto& row: energy){
+        for(auto val : row){
+            max_energy = max(max_energy, val);
+        }
+    }
+    // save energy map as grey scale image
+    vector<unsigned char> energy_img(w * h * 3);
+    // new image, stb needs a flat 1d array
+    for (int y = 0; y < h; y++)
+    {
+        for (int x = 0; x < w; x++)
+        {
+            unsigned char val = (unsigned char)(energy[y][x] / max_energy * 255);
+            // normalisation formulla
+            // energy[y][x] / max_energy   → gives you a number between 0.0 and 1.0
+            // × 255                        → stretches it to 0 to 255
+            // (unsigned char)              → converts double to integer
+            /*
+            pixel energy  = 600
+            max energy    = 1200
+            600/1200      = 0.5
+            0.5 * 255     = 127   ← medium grey
+            */
+            int i = (y*w+x) * 3;
+            energy_img[i] = energy_img[i+1] = energy_img[i+2] = val;
+            // all same values  why??
+            // because u want greyscale image 
+            // in greyscal r g b r alwys same
+        }
+    }
+    stbi_write_png("energy.png", w, h, 3, energy_img.data(), w*3);
+    cout<<"energy map saved to energy.png\n";
     stbi_image_free(img);
     return 0;
 }
