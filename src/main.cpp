@@ -5,8 +5,10 @@
 #include <iostream>
 #include <vector>
 #include <cmath>
+#include <chrono>
 #include <bits/stdc++.h>
 using namespace std;
+using namespace chrono;
 // vector for 2d arrays
 // cmath for sqrt() and pow()
 struct pixel{
@@ -162,65 +164,56 @@ vector<vector<pixel>> transpose(vector<vector<pixel>> &pixels, int w, int h)
             transposed[x][y] = pixels[y][x];
     return transposed;
 }
-int main(int argc, char *argv[]){
+int main(int argc, char *argv[])
+{
     if (argc < 5)
     {
         cout << "Usage: ./seamcarve input.png output.png <vertical_seams> <horizontal_seams>\n";
-        cout << "Example: ./seamcarve images/test.png carved.png 200 100\n";
         return 1;
     }
     string input_path = argv[1];
     string output_path = argv[2];
     int vertical_seams = stoi(argv[3]);
-    int horizontali_seams = stoi(argv[4]);
+    int horizontal_seams = stoi(argv[4]);
+
     int w, h, channels;
     unsigned char *img = stbi_load(input_path.c_str(), &w, &h, &channels, 3);
     if (!img)
     {
-        cout << "Failed to load image\n";
+        cout << "Failed to load: " << input_path << "\n";
         return 1;
     }
+
+    cout << "Loaded: " << w << "x" << h << "\n";
     auto pixels = load_pixels(img, w, h);
-    auto energy = compute_energy(pixels, w, h);
-    auto seam = find_seam(energy, w, h);
-    // draw seam in red on original img
-    for(int y=0; y<h; y++){
-        int x = seam[y];
-        int i = (y*w+x)*3;
-        img[i] = 255;
-        img[i+1] = 0;
-        img[i+2] = 0;
+    stbi_image_free(img);
+    auto start = high_resolution_clock::now();
+    // after loading image, before loops
+    if (vertical_seams >= w || horizontal_seams >= h)
+    {
+        cout << "Error: can't remove more seams than image dimensions\n";
+        cout << "Max vertical seams: " << w - 1 << "\n";
+        cout << "Max horizontal seams: " << h - 1 << "\n";
+        return 1;
     }
-    stbi_write_png("seam.png", w, h, 3, img, w * 3);
-    seam_remove(pixels, seam, w, h);
-    w--;
-    vector<unsigned char> out(w * h * 3);
-    for (int y = 0; y < h; y++){
-        for (int x = 0; x < w; x++)
-        {
-            int i = (y * w + x) * 3;
-            out[i] = pixels[y][x].r;
-            out[i + 1] = pixels[y][x].g;
-            out[i + 2] = pixels[y][x].b;
-        }
-    }
-    cout<<"TESTING\n";
-    stbi_write_png("removed.png", w, h, 3, out.data(), w * 3);
-    cout << "TESTING SUCCESSFUL Seam removed. New width: " << w << "\n";
-    int seams_to_remove = vertical_seams;
-    for(int i=0; i<seams_to_remove; i++){
+    // vertical seams
+    for (int i = 0; i < vertical_seams; i++)
+    {
         auto energy = compute_energy(pixels, w, h);
         auto seam = find_seam(energy, w, h);
         seam_remove(pixels, seam, w, h);
         w--;
     }
-    cout << "Vertical seams done. Width: " << w << "\n";
-
-    // --- remove 100 horizontal seams ---
-    int horizontal_seams = horizontali_seams;
+    cout << "Vertical done. Width: " << w << "\n";
+    auto v_end = high_resolution_clock::now();
+    double v_time = duration<double>(v_end-start).count();
+    cout << "Vertical done: " << vertical_seams << " seams in "
+         << v_time << "s ("
+         << (v_time / vertical_seams * 1000) << "ms per seam)\n";
+    // horizontal seams
     pixels = transpose(pixels, w, h);
     swap(w, h);
-
+    auto h_start = high_resolution_clock::now();
     for (int i = 0; i < horizontal_seams; i++)
     {
         auto energy = compute_energy(pixels, w, h);
@@ -228,58 +221,28 @@ int main(int argc, char *argv[]){
         seam_remove(pixels, seam, w, h);
         w--;
     }
-
+    auto h_end = high_resolution_clock::now();
+    double h_time = duration<double>(h_end - h_start).count();
+    if (horizontal_seams > 0)
+        cout << "Horizontal done: " << horizontal_seams << " seams in "
+             << h_time << "s ("
+             << (h_time / horizontal_seams * 1000) << "ms per seam)\n";
     pixels = transpose(pixels, w, h);
     swap(w, h);
-    h -= horizontal_seams; // fix h after transposing back
-    cout << "Horizontal seams done. Height: " << h << "\n";
-    vector<unsigned char> outi(w * h * 3);
+    h -= horizontal_seams;
+    cout << "Horizontal done. Height: " << h << "\n";
+
+    // save output
+    vector<unsigned char> out(w * h * 3);
     for (int y = 0; y < h; y++)
         for (int x = 0; x < w; x++)
         {
             int i = (y * w + x) * 3;
-            outi[i] = pixels[y][x].r;
-            outi[i + 1] = pixels[y][x].g;
-            outi[i + 2] = pixels[y][x].b;
+            out[i] = pixels[y][x].r;
+            out[i + 1] = pixels[y][x].g;
+            out[i + 2] = pixels[y][x].b;
         }
-    stbi_write_png(output_path.c_str(), w, h, 3, outi.data(), w * 3);
-    cout << "Done verticval seeam. Final width: " << w << "\n";
-
-    double max_energy = 0;
-    // this is for normalisation
-    // because each pixel should be b/w 0 to 255
-    for(auto& row: energy){
-        for(auto val : row){
-            max_energy = max(max_energy, val);
-        }
-    }
-    // save energy map as grey scale image
-    vector<unsigned char> energy_img(w * h * 3);
-    // new image, stb needs a flat 1d array
-    for (int y = 0; y < h; y++)
-    {
-        for (int x = 0; x < w; x++)
-        {
-            unsigned char val = (unsigned char)(energy[y][x] / max_energy * 255);
-            // normalisation formulla
-            // energy[y][x] / max_energy   → gives you a number between 0.0 and 1.0
-            // × 255                        → stretches it to 0 to 255
-            // (unsigned char)              → converts double to integer
-            /*
-            pixel energy  = 600
-            max energy    = 1200
-            600/1200      = 0.5
-            0.5 * 255     = 127   ← medium grey
-            */
-            int i = (y*w+x) * 3;
-            energy_img[i] = energy_img[i+1] = energy_img[i+2] = val;
-            // all same values  why??
-            // because u want greyscale image 
-            // in greyscal r g b r alwys same
-        }
-    }
-    stbi_write_png("energy.png", w, h, 3, energy_img.data(), w*3);
-    cout<<"energy map saved to energy.png\n";
-    stbi_image_free(img);
+    stbi_write_png(output_path.c_str(), w, h, 3, out.data(), w * 3);
+    cout << "Saved: " << output_path << " (" << w << "x" << h << ")\n";
     return 0;
 }

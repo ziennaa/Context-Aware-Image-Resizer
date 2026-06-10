@@ -289,3 +289,15 @@ Key insights:
 - Different energy functions produce visually different results, making benchmarking meaningful
 - Partial energy recalculation is a significant optimization in practice
 
+benchmarks
+
+Image SizeSeamsTimePer Seam400×30050 vertical0.061s~1.2ms1916×107850 vertical1.29s~25.8ms1916×1078200 vertical4.93s~24.6ms1916×1078200 both7.85s total~25ms
+Key insight from your data worth writing in README:
+Per-seam time stays roughly constant (~25ms for large image) regardless of how many seams you remove. This confirms O(W×H) per seam complexity — exactly what the theory predicts. That's a real observation you made from actual benchmarking.
+Also notice small image (400×300) is ~20x faster per seam than large image (1916×1078). Width×Height ratio is roughly 20x too. Confirms linear scaling.
+
+Image SizeSeamsTimePer Seam400×30050 vertical0.061s~1.2ms1916×107850 vertical1.29s~25.8ms1916×1078200 vertical4.93s~24.6ms1916×1078200 both7.85s total~25ms
+
+Key insight from your data worth writing in README:
+Per-seam time stays roughly constant (~25ms for large image) regardless of how many seams you remove. This confirms O(W×H) per seam complexity — exactly what the theory predicts. That's a real observation you made from actual benchmarking.
+Also notice small image (400×300) is ~20x faster per seam than large image (1916×1078). Width×Height ratio is roughly 20x too. Confirms linear scaling.
