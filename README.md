@@ -301,3 +301,47 @@ Image SizeSeamsTimePer Seam400×30050 vertical0.061s~1.2ms1916×107850 vertical1
 Key insight from your data worth writing in README:
 Per-seam time stays roughly constant (~25ms for large image) regardless of how many seams you remove. This confirms O(W×H) per seam complexity — exactly what the theory predicts. That's a real observation you made from actual benchmarking.
 Also notice small image (400×300) is ~20x faster per seam than large image (1916×1078). Width×Height ratio is roughly 20x too. Confirms linear scaling.
+
+
+On high-contrast images, simple gradient and Sobel produce near-identical seam paths. Sobel is ~16% slower due to sampling 8 neighbors vs 4, with marginal quality benefit on images with strong edges. Difference is more pronounced on low-contrast or textured images.
+
+
+Sobel preserves edge detail better on textured images at a 16-38% performance cost. On high-contrast images both methods produce equivalent results.
+
+
+Sobel samples 8 neighbors vs simple gradient's 4, making it theoretically better at detecting diagonal edges. In practice on these test images, both methods produce near-identical seam paths. Sobel is 16-38% slower depending on image size with no significant visual improvement on high-contrast images. Difference may be more pronounced on images with diagonal edges or fine textures.
+
+Saved: out_sobel.png (1716x1078)      ./seamcarve images/newnew.jpg out_simple.png 50 0 
+
+Loaded: 400x300
+Vertical done. Width: 350
+Vertical done: 50 seams in 0.0615602s (1.2312ms per seam)
+Horizontal done. Height: 300          ./seamcarve images/newnew.jpg out_simple.png 50 0e.png (350x300)                                  ./seamcare images/newnew.jpg out_sobel.png 50 0 --sobel
+
+ 
+./seamcarve images/newnew.jpg out_sobel.png 50 0 --sobel
+>> 
+Loaded: 400x300
+Vertical done. Width: 350
+Vertical done: 50 seams in 0.0848229s (1.69646ms per seam)
+Horizontal done. Height: 300
+Saved: out_sobel.png (350x300)
+
+For these also idk if theres diff
+
+
+not as such no visible diff tbh
+>> 
+Loaded: 1916x1078
+Vertical done. Width: 1716
+Vertical done: 200 seams in 4.79742s (23.9871ms per seam)
+Horizontal done. Height: 1078         ./seamcarve images/test.png out_sobel.png 200 0 --sobel(1716x1078)
+
+Loaded: 1916x1078
+Vertical done. Width: 1716
+Vertical done: 200 seams in 5.5871s (27.9355ms per seam)
+Horizontal done. Height: 1078
+Saved: out_sobel.png (1716x1078)
+
+
+these i got

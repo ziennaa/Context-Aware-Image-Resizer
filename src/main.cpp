@@ -111,6 +111,47 @@ vector<vector<double>> compute_energy(vector<vector<pixel>> &pixels, int w, int 
 
        */
 
+vector<vector<double>> compute_energy_sobel(vector<vector<pixel>> &pixels, int w, int h)
+{
+    vector<vector<double>> energy(h, vector<double>(w, 0));
+    for (int y = 0; y < h; y++)
+    {
+        for (int x = 0; x < w; x++)
+        {
+            // get all 8 neighbors (clamped at borders)
+            pixel tl = pixels[max(y - 1, 0)][max(x - 1, 0)];         // top-left
+            pixel tm = pixels[max(y - 1, 0)][x];                     // top-middle
+            pixel tr = pixels[max(y - 1, 0)][min(x + 1, w - 1)];     // top-right
+            pixel ml = pixels[y][max(x - 1, 0)];                     // middle-left
+            pixel mr = pixels[y][min(x + 1, w - 1)];                 // middle-right
+            pixel bl = pixels[min(y + 1, h - 1)][max(x - 1, 0)];     // bottom-left
+            pixel bm = pixels[min(y + 1, h - 1)][x];                 // bottom-middle
+            pixel br = pixels[min(y + 1, h - 1)][min(x + 1, w - 1)]; // bottom-right
+
+            // sobel kernels applied to each channel
+            // Gx kernel: -1 0 +1 / -2 0 +2 / -1 0 +1
+            // Gy kernel: +1 +2 +1 / 0 0 0 / -1 -2 -1
+            auto gx = [&](int l, int r)
+            { return -l + r; };
+            auto gy = [&](int t, int b)
+            { return -t + b; };
+
+            double gx_r = -tl.r - 2 * ml.r - bl.r + tr.r + 2 * mr.r + br.r;
+            double gx_g = -tl.g - 2 * ml.g - bl.g + tr.g + 2 * mr.g + br.g;
+            double gx_b = -tl.b - 2 * ml.b - bl.b + tr.b + 2 * mr.b + br.b;
+
+            double gy_r = -tl.r - 2 * tm.r - tr.r + bl.r + 2 * bm.r + br.r;
+            double gy_g = -tl.g - 2 * tm.g - tr.g + bl.g + 2 * bm.g + br.g;
+            double gy_b = -tl.b - 2 * tm.b - tr.b + bl.b + 2 * bm.b + br.b;
+
+            double gx_mag = gx_r * gx_r + gx_g * gx_g + gx_b * gx_b;
+            double gy_mag = gy_r * gy_r + gy_g * gy_g + gy_b * gy_b;
+
+            energy[y][x] = sqrt(gx_mag + gy_mag);
+        }
+    }
+    return energy;
+}
 // dp logic
 vector<int> find_seam(vector<vector<double>>& energy, int w, int h){
     vector<vector<double>> dp(h, vector<double>(w, 0));
@@ -175,6 +216,8 @@ int main(int argc, char *argv[])
     string output_path = argv[2];
     int vertical_seams = stoi(argv[3]);
     int horizontal_seams = stoi(argv[4]);
+    // after parsing argv, add:
+    bool use_sobel = (argc >= 6 && string(argv[5]) == "--sobel");
 
     int w, h, channels;
     unsigned char *img = stbi_load(input_path.c_str(), &w, &h, &channels, 3);
@@ -199,7 +242,8 @@ int main(int argc, char *argv[])
     // vertical seams
     for (int i = 0; i < vertical_seams; i++)
     {
-        auto energy = compute_energy(pixels, w, h);
+        auto energy = use_sobel ? compute_energy_sobel(pixels, w, h)
+                                : compute_energy(pixels, w, h);
         auto seam = find_seam(energy, w, h);
         seam_remove(pixels, seam, w, h);
         w--;
@@ -216,7 +260,8 @@ int main(int argc, char *argv[])
     auto h_start = high_resolution_clock::now();
     for (int i = 0; i < horizontal_seams; i++)
     {
-        auto energy = compute_energy(pixels, w, h);
+        auto energy = use_sobel ? compute_energy_sobel(pixels, w, h)
+                                : compute_energy(pixels, w, h);
         auto seam = find_seam(energy, w, h);
         seam_remove(pixels, seam, w, h);
         w--;
