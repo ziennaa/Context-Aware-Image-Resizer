@@ -289,6 +289,36 @@ int remove_object_vertical(
 
     return removed_seams;
 }
+double calculate_psnr(vector<vector<pixel>> &original,
+                      vector<vector<pixel>> &carved,
+                      int w, int h)
+{
+    double mse = 0;
+    for (int y = 0; y < h; y++)
+        for (int x = 0; x < w; x++)
+        {
+            double dr = original[y][x].r - carved[y][x].r;
+            double dg = original[y][x].g - carved[y][x].g;
+            double db = original[y][x].b - carved[y][x].b;
+            mse += (dr * dr + dg * dg + db * db) / 3.0;
+        }
+    mse /= (w * h);
+    if (mse == 0)
+        return 100.0;
+    return 10.0 * log10((255.0 * 255.0) / mse);
+}
+vector<vector<pixel>> standard_resize(vector<vector<pixel>> &pixels_orig,
+                                      int orig_w, int h, int new_w)
+{
+    vector<vector<pixel>> resized(h, vector<pixel>(new_w));
+    for (int y = 0; y < h; y++)
+        for (int x = 0; x < new_w; x++)
+        {
+            int src_x = (int)(x * (double)orig_w / new_w);
+            resized[y][x] = pixels_orig[y][src_x];
+        }
+    return resized;
+}
 int main(int argc, char *argv[])
 {
     if (argc < 5)
@@ -305,22 +335,41 @@ int main(int argc, char *argv[])
     bool remove_object = false;
     string mask_path = "";
 
+    //for (int i = 5; i < argc; i++)
+    //{
+    //    string arg = argv[i];
+//
+    //    if (arg == "--sobel")
+    //    {
+    //        use_sobel = true;
+    //    }
+    //    else if (arg == "--remove-object")
+    //    {
+    //        remove_object = true;
+    //    }
+    //    
+    //    else
+    //    {
+    //        mask_path = arg;
+    //    }
+    //}
+    bool save_energy = false;
+    bool save_frames = false;
+    // in arg parsing:
+    //else if (arg == "--save-frames") save_frames = true;
     for (int i = 5; i < argc; i++)
     {
         string arg = argv[i];
-
         if (arg == "--sobel")
-        {
             use_sobel = true;
-        }
         else if (arg == "--remove-object")
-        {
             remove_object = true;
-        }
+        else if (arg == "--save-energy")
+            save_energy = true;
+        else if (arg == "--save-frames")
+            save_frames = true;
         else
-        {
             mask_path = arg;
-        }
     }
 
     int w, h, channels;
@@ -333,6 +382,8 @@ int main(int argc, char *argv[])
 
     cout << "Loaded: " << w << "x" << h << "\n";
     auto pixels = load_pixels(img, w, h);
+    auto original_pixels = pixels;
+    int original_w = w;
     stbi_image_free(img);
     auto start = high_resolution_clock::now();
     // after loading image, before loops
@@ -415,12 +466,41 @@ int main(int argc, char *argv[])
     }
     else
     {
+        //for (int i = 0; i < vertical_seams; i++)
+        //{
+        //    auto energy = use_sobel ? compute_energy_sobel(pixels, w, h, mask)
+        //                            : compute_energy(pixels, w, h, mask);
+//
+        //    auto seam = find_seam(energy, w, h);
+//
+        //    seam_remove(pixels, mask, seam, w, h);
+        //    w--;
+        //}
         for (int i = 0; i < vertical_seams; i++)
         {
             auto energy = use_sobel ? compute_energy_sobel(pixels, w, h, mask)
                                     : compute_energy(pixels, w, h, mask);
-
             auto seam = find_seam(energy, w, h);
+
+            // save frame before removing
+            if (save_frames && i % 3 == 0)
+            {
+                auto frame = pixels;
+                for (int y = 0; y < h; y++)
+                    if (seam[y] < (int)frame[y].size())
+                        frame[y][seam[y]] = {255, 0, 0};
+                vector<unsigned char> fout(w * h * 3);
+                for (int y = 0; y < h; y++)
+                    for (int x = 0; x < w; x++)
+                    {
+                        int idx = (y * w + x) * 3;
+                        fout[idx] = frame[y][x].r;
+                        fout[idx + 1] = frame[y][x].g;
+                        fout[idx + 2] = frame[y][x].b;
+                    }
+                string fname = "frames/frame_" + to_string(i / 3) + ".png";
+                stbi_write_png(fname.c_str(), w, h, 3, fout.data(), w * 3);
+            }
 
             seam_remove(pixels, mask, seam, w, h);
             w--;
@@ -466,7 +546,28 @@ int main(int argc, char *argv[])
     swap(w, h);
     //h -= horizontal_seams;
     cout << "Horizontal done. Height: " << h << "\n";
-
+    // save energy map if requested
+    if (save_energy)
+    {
+        auto energy_map = compute_energy(pixels, w, h, mask);
+        double maxE = 0;
+        for (auto &row : energy_map)
+            for (auto val : row)
+                maxE = max(maxE, val);
+        vector<unsigned char> emap(w * h * 3);
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++)
+            {
+                unsigned char val = (unsigned char)(energy_map[y][x] / maxE * 255);
+                int idx = (y * w + x) * 3;
+                emap[idx] = emap[idx + 1] = emap[idx + 2] = val;
+            }
+        stbi_write_png("assets/energy_map.png", w, h, 3, emap.data(), w * 3);
+        cout << "Energy map saved to assets/energy_map.png\n";
+    }
+    auto std_resized = standard_resize(original_pixels, original_w, h, w);
+    double psnr_seam = calculate_psnr(std_resized, pixels, w, h);
+    cout << "PSNR (seam carved vs standard resize): " << psnr_seam << " dB\n";
     // save output
     vector<unsigned char> out(w * h * 3);
     for (int y = 0; y < h; y++)
