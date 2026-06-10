@@ -122,7 +122,7 @@ Time complexity: **O(W × H)** per seam.
 
 The red line below shows the first seam found on the ocean image — running between the flat water and the wave boundary, avoiding both surfers entirely.
 
-![seam visualization](assets/seam_viz.png)
+![seam visualization](frames/frame_16.png)
 
 ---
 
