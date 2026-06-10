@@ -79,8 +79,9 @@ vector<vector<double>> compute_energy(vector<vector<pixel>> &pixels, int w, int 
             double dx = pow(right.r - left.r, 2) + pow(right.g - left.g, 2) + pow(right.b - left.b, 2);
             double dy = pow(down.r - up.r, 2) + pow(down.g - up.g, 2) + pow(down.b - up.b, 2);
             energy[y][x] = sqrt(dy+dx);
+            // MASK PRIORITY: marked pixels get ultra-low energy to force seams through them
             if (mask[y][x])
-                energy[y][x] = -1e9;
+                energy[y][x] = -1e15;  // Much lower than normal energy values
         }
     }
     return energy;
@@ -150,8 +151,9 @@ vector<vector<double>> compute_energy_sobel(vector<vector<pixel>> &pixels, int w
             double gy_mag = gy_r * gy_r + gy_g * gy_g + gy_b * gy_b;
 
             energy[y][x] = sqrt(gx_mag + gy_mag);
+            // MASK PRIORITY: marked pixels get ultra-low energy to force seams through them
             if (mask[y][x])
-                energy[y][x] = -1e9;
+                energy[y][x] = -1e15;  // Much lower than normal energy values
         }
     }
     return energy;
@@ -225,6 +227,68 @@ vector<vector<pixel>> transpose(vector<vector<pixel>> &pixels, int w, int h)
             transposed[x][y] = pixels[y][x];
     return transposed;
 }
+int count_masked_pixels(const vector<vector<bool>> &mask)
+{
+    int count = 0;
+
+    for (auto &row : mask)
+    {
+        for (bool cell : row)
+        {
+            if (cell)
+                count++;
+        }
+    }
+
+    return count;
+}
+int remove_object_vertical(
+    vector<vector<pixel>> &pixels,
+    vector<vector<bool>> &mask,
+    int &w,
+    int h,
+    bool use_sobel)
+{
+    int removed_seams = 0;
+
+    while (count_masked_pixels(mask) > 0 && w > 1)
+    {
+        int before = count_masked_pixels(mask);
+
+        auto energy = use_sobel
+                          ? compute_energy_sobel(pixels, w, h, mask)
+                          : compute_energy(pixels, w, h, mask);
+
+        auto seam = find_seam(energy, w, h);
+        
+        // DEBUG: Check if seam passes through any masked pixels
+        int masked_in_seam = 0;
+        for (int y = 0; y < h; y++)
+        {
+            if (mask[y][seam[y]])
+                masked_in_seam++;
+        }
+
+        seam_remove(pixels, mask, seam, w, h);
+        w--;
+        removed_seams++;
+
+        int after = count_masked_pixels(mask);
+
+        cout << "Object removal seam " << removed_seams
+             << " | masked left: " << after 
+             << " | masked pixels in seam: " << masked_in_seam << "\n";
+
+        // safety: avoid infinite loop if something weird happens
+        if (after >= before)
+        {
+            cout << "Warning: mask is not reducing. Stopping.\n";
+            break;
+        }
+    }
+
+    return removed_seams;
+}
 int main(int argc, char *argv[])
 {
     if (argc < 5)
@@ -237,7 +301,27 @@ int main(int argc, char *argv[])
     int vertical_seams = stoi(argv[3]);
     int horizontal_seams = stoi(argv[4]);
     // after parsing argv, add:
-    bool use_sobel = (argc >= 6 && string(argv[5]) == "--sobel");
+    bool use_sobel = false;
+    bool remove_object = false;
+    string mask_path = "";
+
+    for (int i = 5; i < argc; i++)
+    {
+        string arg = argv[i];
+
+        if (arg == "--sobel")
+        {
+            use_sobel = true;
+        }
+        else if (arg == "--remove-object")
+        {
+            remove_object = true;
+        }
+        else
+        {
+            mask_path = arg;
+        }
+    }
 
     int w, h, channels;
     unsigned char *img = stbi_load(input_path.c_str(), &w, &h, &channels, 3);
@@ -263,13 +347,13 @@ int main(int argc, char *argv[])
     // simplest: just hardcode mask loading for now, add CLI later
 
     // load mask if provided
-    string mask_path = "";
-    for (int i = 5; i < argc; i++)
-    {
-        string arg = argv[i];
-        if (arg != "--sobel")
-            mask_path = arg;
-    }
+    //string mask_path = "";
+    //for (int i = 5; i < argc; i++)
+    //{
+    //    string arg = argv[i];
+    //    if (arg != "--sobel")
+    //        mask_path = arg;
+    //}
 
     vector<vector<bool>> mask(h, vector<bool>(w, false));
     if (mask_path != "")
@@ -283,11 +367,21 @@ int main(int argc, char *argv[])
                 {
                     int i = (y * w + x) * 3;
                     // white pixel in mask = remove this region
-                    if (mask_img[i] > 10 || mask_img[i + 1] > 10 || mask_img[i + 2] > 10)
+                    // Check if pixel is bright enough to be considered "marked for removal"
+                    // Use a more lenient threshold: any channel > 128 counts
+                    unsigned char max_channel = max({mask_img[i], mask_img[i + 1], mask_img[i + 2]});
+                    if (max_channel > 128)
                         mask[y][x] = true;
                 }
             stbi_image_free(mask_img);
             cout << "Mask loaded: " << mask_path << "\n";
+        }
+        else
+        {
+            if (!mask_img)
+                cout << "ERROR: Could not load mask file: " << mask_path << "\n";
+            if (mask_img && (mw != w || mh != h))
+                cout << "ERROR: Mask dimensions " << mw << "x" << mh << " don't match image " << w << "x" << h << "\n";
         }
     }
     // count masked pixels
@@ -296,22 +390,53 @@ int main(int argc, char *argv[])
         for (int x = 0; x < w; x++)
             if (mask[y][x])
                 masked++;
-    cout << "Masked pixels: " << masked << "\n";
-    // vertical seams
-    for (int i = 0; i < vertical_seams; i++)
+    cout << "Masked pixels to remove: " << masked << "\n";
+    
+    if (masked == 0 && remove_object && mask_path != "")
     {
-        auto energy = use_sobel ? compute_energy_sobel(pixels, w, h, mask)
-                                : compute_energy(pixels, w, h, mask);
-        auto seam = find_seam(energy, w, h);
-        seam_remove(pixels, mask, seam, w, h);
-        w--;
+        cout << "WARNING: Mask loaded but NO pixels marked! Check that mask image has bright (white) pixels.\n";
+    }
+    // vertical seams
+    //for (int i = 0; i < vertical_seams; i++)
+    //{
+    //    auto energy = use_sobel ? compute_energy_sobel(pixels, w, h, mask)
+    //                            : compute_energy(pixels, w, h, mask);
+    //    auto seam = find_seam(energy, w, h);
+    //    seam_remove(pixels, mask, seam, w, h);
+    //    w--;
+    //}
+    if (remove_object && mask_path != "")
+    {
+        int removed = remove_object_vertical(pixels, mask, w, h, use_sobel);
+
+        cout << "Object removal done. Removed "
+             << removed << " seams. New width: "
+             << w << "\n";
+    }
+    else
+    {
+        for (int i = 0; i < vertical_seams; i++)
+        {
+            auto energy = use_sobel ? compute_energy_sobel(pixels, w, h, mask)
+                                    : compute_energy(pixels, w, h, mask);
+
+            auto seam = find_seam(energy, w, h);
+
+            seam_remove(pixels, mask, seam, w, h);
+            w--;
+        }
+
+        cout << "Vertical done. Width: " << w << "\n";
     }
     cout << "Vertical done. Width: " << w << "\n";
     auto v_end = high_resolution_clock::now();
     double v_time = duration<double>(v_end-start).count();
-    cout << "Vertical done: " << vertical_seams << " seams in "
-         << v_time << "s ("
-         << (v_time / vertical_seams * 1000) << "ms per seam)\n";
+    if (vertical_seams > 0)
+    {
+        cout << "Vertical done: " << vertical_seams << " seams in "
+             << v_time << "s ("
+             << (v_time / vertical_seams * 1000) << "ms per seam)\n";
+    }
 
     // transpose mask too
     vector<vector<bool>> mask_t(w, vector<bool>(h, false));
@@ -339,7 +464,7 @@ int main(int argc, char *argv[])
              << (h_time / horizontal_seams * 1000) << "ms per seam)\n";
     pixels = transpose(pixels, w, h);
     swap(w, h);
-    h -= horizontal_seams;
+    //h -= horizontal_seams;
     cout << "Horizontal done. Height: " << h << "\n";
 
     // save output
