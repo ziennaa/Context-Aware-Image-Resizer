@@ -61,8 +61,8 @@ struct pixel{
     // after calling loadpixels()
 }
 
-// energy of each pixel 
-vector<vector<double>> compute_energy(vector<vector<pixel>> &pixels, int w, int h){
+// energy of each pixel
+vector<vector<double>> compute_energy(vector<vector<pixel>> &pixels, int w, int h, vector<vector<bool>> &mask){
     vector<vector<double>> energy(h, vector<double>(w, 0));
     // returns a 2d grid of doubles 
     // same size as image
@@ -79,6 +79,8 @@ vector<vector<double>> compute_energy(vector<vector<pixel>> &pixels, int w, int 
             double dx = pow(right.r - left.r, 2) + pow(right.g - left.g, 2) + pow(right.b - left.b, 2);
             double dy = pow(down.r - up.r, 2) + pow(down.g - up.g, 2) + pow(down.b - up.b, 2);
             energy[y][x] = sqrt(dy+dx);
+            if (mask[y][x])
+                energy[y][x] = -1e9;
         }
     }
     return energy;
@@ -111,7 +113,7 @@ vector<vector<double>> compute_energy(vector<vector<pixel>> &pixels, int w, int 
 
        */
 
-vector<vector<double>> compute_energy_sobel(vector<vector<pixel>> &pixels, int w, int h)
+vector<vector<double>> compute_energy_sobel(vector<vector<pixel>> &pixels, int w, int h, vector<vector<bool>>& mask)
 {
     vector<vector<double>> energy(h, vector<double>(w, 0));
     for (int y = 0; y < h; y++)
@@ -131,10 +133,10 @@ vector<vector<double>> compute_energy_sobel(vector<vector<pixel>> &pixels, int w
             // sobel kernels applied to each channel
             // Gx kernel: -1 0 +1 / -2 0 +2 / -1 0 +1
             // Gy kernel: +1 +2 +1 / 0 0 0 / -1 -2 -1
-            auto gx = [&](int l, int r)
-            { return -l + r; };
-            auto gy = [&](int t, int b)
-            { return -t + b; };
+            //auto gx = [&](int l, int r)
+            //{ return -l + r; };
+            //auto gy = [&](int t, int b)
+            //{ return -t + b; };
 
             double gx_r = -tl.r - 2 * ml.r - bl.r + tr.r + 2 * mr.r + br.r;
             double gx_g = -tl.g - 2 * ml.g - bl.g + tr.g + 2 * mr.g + br.g;
@@ -148,53 +150,71 @@ vector<vector<double>> compute_energy_sobel(vector<vector<pixel>> &pixels, int w
             double gy_mag = gy_r * gy_r + gy_g * gy_g + gy_b * gy_b;
 
             energy[y][x] = sqrt(gx_mag + gy_mag);
+            if (mask[y][x])
+                energy[y][x] = -1e9;
         }
     }
     return energy;
 }
 // dp logic
-vector<int> find_seam(vector<vector<double>>& energy, int w, int h){
-    vector<vector<double>> dp(h, vector<double>(w, 0));
+vector<int> find_seam(vector<vector<double>> &energy, int w, int h)
+{
+    vector<vector<double>> dp(h, vector<double>(w, 1e18));
     vector<vector<int>> parent(h, vector<int>(w, -1));
-    for(int x=0; x<w; x++){
+
+    for (int x = 0; x < w; x++)
         dp[0][x] = energy[0][x];
-    }
-    for(int y=1; y<h; y++){
-        for(int x = 0; x<w; x++){
-            double best = dp[y-1][x];
+
+    for (int y = 1; y < h; y++)
+    {
+        for (int x = 0; x < w; x++)
+        {
+            double best = dp[y - 1][x];
             int best_x = x;
-            if(x-1 >= 0 && dp[y-1][x-1] < best){
-                best = dp[y-1][x-1];
-                best_x = x-1;
+
+            if (x - 1 >= 0 && dp[y - 1][x - 1] < best)
+            {
+                best = dp[y - 1][x - 1];
+                best_x = x - 1;
             }
-            if(x+1 < w && dp[y-1][x+1] < best){
-                best = dp[y-1][x+1];
-                best_x = x+1;
+            if (x + 1 < w && dp[y - 1][x + 1] < best)
+            {
+                best = dp[y - 1][x + 1];
+                best_x = x + 1;
             }
+
             dp[y][x] = energy[y][x] + best;
             parent[y][x] = best_x;
         }
     }
+
+    // find minimum in last row
     int min_x = 0;
-    for(int x =1; x<w; x++){
-        if(dp[h-1][x] < dp[h-1][min_x]){
+    for (int x = 1; x < w; x++)
+        if (dp[h - 1][x] < dp[h - 1][min_x])
             min_x = x;
-        }
-    }
+
     vector<int> seam(h);
-    seam[h-1] = min_x;
-    for(int y=h-2; y>=0; y--){
-        seam[y] = parent[y+1][seam[y+1]];
-    }
+    seam[h - 1] = min_x;
+    for (int y = h - 2; y >= 0; y--)
+        seam[y] = parent[y + 1][seam[y + 1]];
+
     return seam;
 }
-void seam_remove(vector<vector<pixel>>& pixels, vector<int>& seam, int w, int h){
-    for(int y=0; y<h; y++){
+void seam_remove(vector<vector<pixel>> &pixels,
+                 vector<vector<bool>> &mask,
+                 vector<int> &seam, int w, int h)
+{
+    for (int y = 0; y < h; y++)
+    {
         int x = seam[y];
-        for(int j=x; j<w-1; j++){
-            pixels[y][j] = pixels[y][j+1];
+        for (int j = x; j < w - 1; j++)
+        {
+            pixels[y][j] = pixels[y][j + 1];
+            mask[y][j] = mask[y][j + 1];
         }
         pixels[y].pop_back();
+        mask[y].pop_back();
     }
 }
 vector<vector<pixel>> transpose(vector<vector<pixel>> &pixels, int w, int h)
@@ -239,13 +259,51 @@ int main(int argc, char *argv[])
         cout << "Max horizontal seams: " << h - 1 << "\n";
         return 1;
     }
+    // in main, add mask_path as optional 6th argument (or 7th if --sobel is 6th)
+    // simplest: just hardcode mask loading for now, add CLI later
+
+    // load mask if provided
+    string mask_path = "";
+    for (int i = 5; i < argc; i++)
+    {
+        string arg = argv[i];
+        if (arg != "--sobel")
+            mask_path = arg;
+    }
+
+    vector<vector<bool>> mask(h, vector<bool>(w, false));
+    if (mask_path != "")
+    {
+        int mw, mh, mc;
+        unsigned char *mask_img = stbi_load(mask_path.c_str(), &mw, &mh, &mc, 3);
+        if (mask_img && mw == w && mh == h)
+        {
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++)
+                {
+                    int i = (y * w + x) * 3;
+                    // white pixel in mask = remove this region
+                    if (mask_img[i] > 10 || mask_img[i + 1] > 10 || mask_img[i + 2] > 10)
+                        mask[y][x] = true;
+                }
+            stbi_image_free(mask_img);
+            cout << "Mask loaded: " << mask_path << "\n";
+        }
+    }
+    // count masked pixels
+    int masked = 0;
+    for (int y = 0; y < h; y++)
+        for (int x = 0; x < w; x++)
+            if (mask[y][x])
+                masked++;
+    cout << "Masked pixels: " << masked << "\n";
     // vertical seams
     for (int i = 0; i < vertical_seams; i++)
     {
-        auto energy = use_sobel ? compute_energy_sobel(pixels, w, h)
-                                : compute_energy(pixels, w, h);
+        auto energy = use_sobel ? compute_energy_sobel(pixels, w, h, mask)
+                                : compute_energy(pixels, w, h, mask);
         auto seam = find_seam(energy, w, h);
-        seam_remove(pixels, seam, w, h);
+        seam_remove(pixels, mask, seam, w, h);
         w--;
     }
     cout << "Vertical done. Width: " << w << "\n";
@@ -254,16 +312,23 @@ int main(int argc, char *argv[])
     cout << "Vertical done: " << vertical_seams << " seams in "
          << v_time << "s ("
          << (v_time / vertical_seams * 1000) << "ms per seam)\n";
+
+    // transpose mask too
+    vector<vector<bool>> mask_t(w, vector<bool>(h, false));
+    for (int y = 0; y < h; y++)
+        for (int x = 0; x < w; x++)
+            mask_t[x][y] = mask[y][x];
+    mask = mask_t;
     // horizontal seams
     pixels = transpose(pixels, w, h);
     swap(w, h);
     auto h_start = high_resolution_clock::now();
     for (int i = 0; i < horizontal_seams; i++)
     {
-        auto energy = use_sobel ? compute_energy_sobel(pixels, w, h)
-                                : compute_energy(pixels, w, h);
+        auto energy = use_sobel ? compute_energy_sobel(pixels, w, h, mask)
+                                : compute_energy(pixels, w, h, mask);
         auto seam = find_seam(energy, w, h);
-        seam_remove(pixels, seam, w, h);
+        seam_remove(pixels, mask, seam, w, h);
         w--;
     }
     auto h_end = high_resolution_clock::now();
