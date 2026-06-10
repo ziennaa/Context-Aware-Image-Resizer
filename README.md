@@ -35,7 +35,8 @@ Unlike standard resizing which uniformly squeezes all pixels, seam carving ident
 ---
 
 ### Object Removal via Mask
-> The hot air balloon's basket gondola is removed.
+##### The hot air balloon's basket gondola is removed. 
+
 | Original | After Object Removal |
 |---|---|
 | ![original](images/images.jpg) | ![removed](assets/objectremoved.png) |
