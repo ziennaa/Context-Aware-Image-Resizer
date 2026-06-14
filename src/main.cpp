@@ -62,7 +62,8 @@ struct pixel{
 }
 
 // energy of each pixel
-vector<vector<double>> compute_energy(vector<vector<pixel>> &pixels, int w, int h, vector<vector<bool>> &mask){
+vector<vector<double>> compute_energy(vector<vector<pixel>> &pixels, int w, int h, vector<vector<bool>> &mask, vector<vector<bool>> &protect_mask)
+{
     vector<vector<double>> energy(h, vector<double>(w, 0));
     // returns a 2d grid of doubles 
     // same size as image
@@ -82,6 +83,8 @@ vector<vector<double>> compute_energy(vector<vector<pixel>> &pixels, int w, int 
             // MASK PRIORITY: marked pixels get ultra-low energy to force seams through them
             if (mask[y][x])
                 energy[y][x] = -1e15;  // Much lower than normal energy values
+            if (protect_mask[y][x])
+                energy[y][x] = 1e15;
         }
     }
     return energy;
@@ -114,7 +117,7 @@ vector<vector<double>> compute_energy(vector<vector<pixel>> &pixels, int w, int 
 
        */
 
-vector<vector<double>> compute_energy_sobel(vector<vector<pixel>> &pixels, int w, int h, vector<vector<bool>>& mask)
+vector<vector<double>> compute_energy_sobel(vector<vector<pixel>> &pixels, int w, int h, vector<vector<bool>> &mask, vector<vector<bool>> &protect_mask)
 {
     vector<vector<double>> energy(h, vector<double>(w, 0));
     for (int y = 0; y < h; y++)
@@ -154,6 +157,8 @@ vector<vector<double>> compute_energy_sobel(vector<vector<pixel>> &pixels, int w
             // MASK PRIORITY: marked pixels get ultra-low energy to force seams through them
             if (mask[y][x])
                 energy[y][x] = -1e15;  // Much lower than normal energy values
+            if (protect_mask[y][x])
+                energy[y][x] = 1e15;
         }
     }
     return energy;
@@ -205,6 +210,7 @@ vector<int> find_seam(vector<vector<double>> &energy, int w, int h)
 }
 void seam_remove(vector<vector<pixel>> &pixels,
                  vector<vector<bool>> &mask,
+                 vector<vector<bool>> &protect_mask,
                  vector<int> &seam, int w, int h)
 {
     for (int y = 0; y < h; y++)
@@ -214,9 +220,11 @@ void seam_remove(vector<vector<pixel>> &pixels,
         {
             pixels[y][j] = pixels[y][j + 1];
             mask[y][j] = mask[y][j + 1];
+            protect_mask[y][j] = protect_mask[y][j + 1];
         }
         pixels[y].pop_back();
         mask[y].pop_back();
+        protect_mask[y].pop_back();
     }
 }
 vector<vector<pixel>> transpose(vector<vector<pixel>> &pixels, int w, int h)
@@ -245,6 +253,7 @@ int count_masked_pixels(const vector<vector<bool>> &mask)
 int remove_object_vertical(
     vector<vector<pixel>> &pixels,
     vector<vector<bool>> &mask,
+    vector<vector<bool>> &protect_mask,
     int &w,
     int h,
     bool use_sobel)
@@ -256,8 +265,8 @@ int remove_object_vertical(
         int before = count_masked_pixels(mask);
 
         auto energy = use_sobel
-                          ? compute_energy_sobel(pixels, w, h, mask)
-                          : compute_energy(pixels, w, h, mask);
+                          ? compute_energy_sobel(pixels, w, h, mask, protect_mask)
+                          : compute_energy(pixels, w, h, mask, protect_mask);
 
         auto seam = find_seam(energy, w, h);
         
@@ -269,7 +278,7 @@ int remove_object_vertical(
                 masked_in_seam++;
         }
 
-        seam_remove(pixels, mask, seam, w, h);
+        seam_remove(pixels, mask, protect_mask, seam, w, h);
         w--;
         removed_seams++;
 
@@ -357,6 +366,26 @@ int main(int argc, char *argv[])
     bool save_frames = false;
     // in arg parsing:
     //else if (arg == "--save-frames") save_frames = true;
+    string protect_path = "";
+    //for (int i = 5; i < argc; i++)
+    //{
+    //    string arg = argv[i];
+    //    if (arg == "--sobel")
+    //        use_sobel = true;
+    //    else if (arg == "--remove-object")
+    //        remove_object = true;
+    //    else if (arg == "--save-energy")
+    //        save_energy = true;
+    //    else if (arg == "--save-frames")
+    //        save_frames = true;
+    //    else if (arg == "--protect")
+    //    {
+    //        if (i + 1 < argc)
+    //            protect_path = argv[++i];
+    //    }
+    //    else
+    //        mask_path = arg;
+    //}
     for (int i = 5; i < argc; i++)
     {
         string arg = argv[i];
@@ -368,8 +397,18 @@ int main(int argc, char *argv[])
             save_energy = true;
         else if (arg == "--save-frames")
             save_frames = true;
+        else if (arg == "--protect")
+        {
+            if (i + 1 < argc)
+                protect_path = argv[++i]; // consume next arg as protect path
+        }
+        else if (arg == "--mask")
+        { // ← add explicit --mask flag
+            if (i + 1 < argc)
+                mask_path = argv[++i];
+        }
         else
-            mask_path = arg;
+            mask_path = arg; // fallback for positional mask arg
     }
 
     int w, h, channels;
@@ -456,9 +495,45 @@ int main(int argc, char *argv[])
     //    seam_remove(pixels, mask, seam, w, h);
     //    w--;
     //}
+    //string protect_path = "";
+    //for (int i = 5; i < argc; i++)
+    //{
+    //    string arg = argv[i];
+    //    if (arg == "--protect")
+    //    {
+    //        if (i + 1 < argc)
+    //            protect_path = argv[++i];
+    //    }
+    //}
+
+    vector<vector<bool>> protect_mask(h, vector<bool>(w, false));
+    if (protect_path != "")
+    {
+        int mw, mh, mc;
+        unsigned char *pm = stbi_load(protect_path.c_str(), &mw, &mh, &mc, 3);
+        if (pm && mw == w && mh == h)
+        {
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++)
+                {
+                    int i = (y * w + x) * 3;
+                    unsigned char max_ch = max({pm[i], pm[i + 1], pm[i + 2]});
+                    if (max_ch > 128)
+                        protect_mask[y][x] = true;
+                }
+            stbi_image_free(pm);
+            cout << "Protect mask loaded: " << protect_path << "\n";
+        }
+    }
+    int protected_pixels = 0;
+    for (auto &row : protect_mask)
+        for (bool v : row)
+            if (v)
+                protected_pixels++;
+    cout << "Protected pixels: " << protected_pixels << "\n";
     if (remove_object && mask_path != "")
     {
-        int removed = remove_object_vertical(pixels, mask, w, h, use_sobel);
+        int removed = remove_object_vertical(pixels, mask, protect_mask, w, h, use_sobel);
 
         cout << "Object removal done. Removed "
              << removed << " seams. New width: "
@@ -478,8 +553,8 @@ int main(int argc, char *argv[])
         //}
         for (int i = 0; i < vertical_seams; i++)
         {
-            auto energy = use_sobel ? compute_energy_sobel(pixels, w, h, mask)
-                                    : compute_energy(pixels, w, h, mask);
+            auto energy = use_sobel ? compute_energy_sobel(pixels, w, h, mask, protect_mask)
+                                    : compute_energy(pixels, w, h, mask, protect_mask);
             auto seam = find_seam(energy, w, h);
 
             // save frame before removing
@@ -502,7 +577,7 @@ int main(int argc, char *argv[])
                 stbi_write_png(fname.c_str(), w, h, 3, fout.data(), w * 3);
             }
 
-            seam_remove(pixels, mask, seam, w, h);
+            seam_remove(pixels, mask, protect_mask, seam, w, h);
             w--;
         }
 
@@ -530,10 +605,10 @@ int main(int argc, char *argv[])
     auto h_start = high_resolution_clock::now();
     for (int i = 0; i < horizontal_seams; i++)
     {
-        auto energy = use_sobel ? compute_energy_sobel(pixels, w, h, mask)
-                                : compute_energy(pixels, w, h, mask);
+        auto energy = use_sobel ? compute_energy_sobel(pixels, w, h, mask, protect_mask)
+                                : compute_energy(pixels, w, h, mask, protect_mask);
         auto seam = find_seam(energy, w, h);
-        seam_remove(pixels, mask, seam, w, h);
+        seam_remove(pixels, mask, protect_mask, seam, w, h);
         w--;
     }
     auto h_end = high_resolution_clock::now();
@@ -546,10 +621,40 @@ int main(int argc, char *argv[])
     swap(w, h);
     //h -= horizontal_seams;
     cout << "Horizontal done. Height: " << h << "\n";
+    //string protect_path = "";
+    //for (int i = 5; i < argc; i++)
+    //{
+    //    string arg = argv[i];
+    //    if (arg == "--protect")
+    //    {
+    //        if (i + 1 < argc)
+    //            protect_path = argv[++i];
+    //    }
+    //}
+//
+    //vector<vector<bool>> protect_mask(h, vector<bool>(w, false));
+    //if (protect_path != "")
+    //{
+    //    int mw, mh, mc;
+    //    unsigned char *pm = stbi_load(protect_path.c_str(), &mw, &mh, &mc, 3);
+    //    if (pm && mw == w && mh == h)
+    //    {
+    //        for (int y = 0; y < h; y++)
+    //            for (int x = 0; x < w; x++)
+    //            {
+    //                int i = (y * w + x) * 3;
+    //                unsigned char max_ch = max({pm[i], pm[i + 1], pm[i + 2]});
+    //                if (max_ch > 128)
+    //                    protect_mask[y][x] = true;
+    //            }
+    //        stbi_image_free(pm);
+    //        cout << "Protect mask loaded: " << protect_path << "\n";
+    //    }
+    //}
     // save energy map if requested
     if (save_energy)
     {
-        auto energy_map = compute_energy(pixels, w, h, mask);
+        auto energy_map = compute_energy(pixels, w, h, mask, protect_mask);
         double maxE = 0;
         for (auto &row : energy_map)
             for (auto val : row)
