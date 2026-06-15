@@ -163,6 +163,75 @@ vector<vector<double>> compute_energy_sobel(vector<vector<pixel>> &pixels, int w
     }
     return energy;
 }
+// Forward energy - penalizes seams that CREATE new edges when removed
+// Based on Rubinstein et al. 2008 "Improved Seam Carving for Video Retargeting"
+vector<vector<double>> compute_energy_forward(
+    vector<vector<pixel>> &pixels, int w, int h,
+    vector<vector<bool>> &mask, vector<vector<bool>> &protect_mask)
+{
+    // helper: brightness difference between two pixels
+    auto diff = [](pixel a, pixel b) -> double
+    {
+        return abs((int)a.r - b.r) + abs((int)a.g - b.g) + abs((int)a.b - b.b);
+    };
+
+    vector<vector<double>> dp(h, vector<double>(w, 1e18));
+    vector<vector<int>> parent(h, vector<int>(w, -1));
+
+    // first row: no previous row, cost = 0
+    for (int x = 0; x < w; x++)
+        dp[0][x] = 0;
+
+    for (int y = 1; y < h; y++)
+    {
+        for (int x = 0; x < w; x++)
+        {
+
+            // CU: cost of new horizontal edge created at this pixel
+            // = difference between left and right neighbors that become adjacent
+            pixel left = pixels[y][max(x - 1, 0)];
+            pixel right = pixels[y][min(x + 1, w - 1)];
+            double CU = diff(left, right);
+
+            // CL: cost if seam came from upper-left
+            // = CU + difference between upper pixel and left neighbor
+            pixel up = pixels[y - 1][x];
+            double CL = CU + diff(up, left);
+
+            // CR: cost if seam came from upper-right
+            // = CU + difference between upper pixel and right neighbor
+            double CR = CU + diff(up, right);
+
+            // find minimum cost path from above
+            double best = dp[y - 1][x] + CU;
+            int best_x = x;
+
+            if (x > 0 && dp[y - 1][x - 1] + CL < best)
+            {
+                best = dp[y - 1][x - 1] + CL;
+                best_x = x - 1;
+            }
+            if (x < w - 1 && dp[y - 1][x + 1] + CR < best)
+            {
+                best = dp[y - 1][x + 1] + CR;
+                best_x = x + 1;
+            }
+
+            dp[y][x] = best;
+            parent[y][x] = best_x;
+
+            // apply masks
+            if (mask[y][x])
+                dp[y][x] = -1e15;
+            if (protect_mask[y][x])
+                dp[y][x] = 1e15;
+        }
+    }
+
+    // forward energy returns the dp table directly as "energy"
+    // find_seam will pick minimum from last row as usual
+    return dp;
+}
 // dp logic
 vector<int> find_seam(vector<vector<double>> &energy, int w, int h)
 {
@@ -256,7 +325,7 @@ int remove_object_vertical(
     vector<vector<bool>> &protect_mask,
     int &w,
     int h,
-    bool use_sobel)
+    bool use_sobel, bool use_forward)
 {
     int removed_seams = 0;
 
@@ -264,9 +333,12 @@ int remove_object_vertical(
     {
         int before = count_masked_pixels(mask);
 
-        auto energy = use_sobel
-                          ? compute_energy_sobel(pixels, w, h, mask, protect_mask)
-                          : compute_energy(pixels, w, h, mask, protect_mask);
+        //auto energy = use_sobel
+        //                  ? compute_energy_sobel(pixels, w, h, mask, protect_mask)
+        //                  : compute_energy(pixels, w, h, mask, protect_mask);
+        auto energy = use_forward ? compute_energy_forward(pixels, w, h, mask, protect_mask)
+                      : use_sobel ? compute_energy_sobel(pixels, w, h, mask, protect_mask)
+                                  : compute_energy(pixels, w, h, mask, protect_mask);
 
         auto seam = find_seam(energy, w, h);
         
@@ -364,6 +436,7 @@ int main(int argc, char *argv[])
     //}
     bool save_energy = false;
     bool save_frames = false;
+    bool use_forward = false;
     // in arg parsing:
     //else if (arg == "--save-frames") save_frames = true;
     string protect_path = "";
@@ -407,6 +480,8 @@ int main(int argc, char *argv[])
             if (i + 1 < argc)
                 mask_path = argv[++i];
         }
+        else if (arg == "--forward")
+            use_forward = true;
         else
             mask_path = arg; // fallback for positional mask arg
     }
@@ -533,7 +608,7 @@ int main(int argc, char *argv[])
     cout << "Protected pixels: " << protected_pixels << "\n";
     if (remove_object && mask_path != "")
     {
-        int removed = remove_object_vertical(pixels, mask, protect_mask, w, h, use_sobel);
+        int removed = remove_object_vertical(pixels, mask, protect_mask, w, h, use_sobel, use_forward);
 
         cout << "Object removal done. Removed "
              << removed << " seams. New width: "
@@ -553,8 +628,11 @@ int main(int argc, char *argv[])
         //}
         for (int i = 0; i < vertical_seams; i++)
         {
-            auto energy = use_sobel ? compute_energy_sobel(pixels, w, h, mask, protect_mask)
-                                    : compute_energy(pixels, w, h, mask, protect_mask);
+            //auto energy = use_sobel ? compute_energy_sobel(pixels, w, h, mask, protect_mask)
+            //                        : compute_energy(pixels, w, h, mask, protect_mask);
+            auto energy = use_forward ? compute_energy_forward(pixels, w, h, mask, protect_mask)
+                          : use_sobel ? compute_energy_sobel(pixels, w, h, mask, protect_mask)
+                                      : compute_energy(pixels, w, h, mask, protect_mask);
             auto seam = find_seam(energy, w, h);
 
             // save frame before removing
@@ -605,8 +683,11 @@ int main(int argc, char *argv[])
     auto h_start = high_resolution_clock::now();
     for (int i = 0; i < horizontal_seams; i++)
     {
-        auto energy = use_sobel ? compute_energy_sobel(pixels, w, h, mask, protect_mask)
-                                : compute_energy(pixels, w, h, mask, protect_mask);
+        //auto energy = use_sobel ? compute_energy_sobel(pixels, w, h, mask, protect_mask)
+        //                        : compute_energy(pixels, w, h, mask, protect_mask);
+        auto energy = use_forward ? compute_energy_forward(pixels, w, h, mask, protect_mask)
+                      : use_sobel ? compute_energy_sobel(pixels, w, h, mask, protect_mask)
+                                  : compute_energy(pixels, w, h, mask, protect_mask);
         auto seam = find_seam(energy, w, h);
         seam_remove(pixels, mask, protect_mask, seam, w, h);
         w--;
