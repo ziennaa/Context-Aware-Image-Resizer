@@ -433,14 +433,14 @@ vector<vector<int>> find_k_seams(
 void insert_seams(
     vector<vector<pixel>> &pixels, int &w, int h,
     vector<vector<bool>> &mask, vector<vector<bool>> &protect_mask,
-    int k, bool use_forward, bool use_sobel)
+    int k, bool use_forward, bool use_sobel, bool save_frames = false)
 {
     auto seams = find_k_seams(pixels, w, h, mask, protect_mask, k, use_forward, use_sobel);
 
     // insert seams from left to right, adjusting x positions as we go
     // each insertion shifts pixels to the right, so track offsets
     vector<int> offsets(h, 0); // how many pixels inserted so far at each row
-
+    int frame_count = 0;
     for (auto &seam : seams)
     {
         // adjust seam x positions based on previous insertions
@@ -467,7 +467,23 @@ void insert_seams(
 
             offsets[y]++;
         }
+        
         w++;
+        if (save_frames && frame_count % 3 == 0)
+        {
+            vector<unsigned char> fout(w * h * 3);
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++)
+                {
+                    int idx = (y * w + x) * 3;
+                    fout[idx] = pixels[y][x].r;
+                    fout[idx + 1] = pixels[y][x].g;
+                    fout[idx + 2] = pixels[y][x].b;
+                }
+            string fname = "frames/frame_" + to_string(frame_count / 3) + ".png";
+            stbi_write_png(fname.c_str(), w, h, 3, fout.data(), w * 3);
+        }
+        frame_count++;
     }
 }
 int main(int argc, char *argv[])
@@ -692,7 +708,7 @@ int main(int argc, char *argv[])
     if (upscale && upscale_seams > 0)
     {
         cout << "Upscaling by " << upscale_seams << " seams...\n";
-        insert_seams(pixels, w, h, mask, protect_mask, upscale_seams, use_forward, use_sobel);
+        insert_seams(pixels, w, h, mask, protect_mask, upscale_seams, use_forward, use_sobel, save_frames);
         cout << "Upscale done. New width: " << w << "\n";
     }
     if (remove_object && mask_path != "")
