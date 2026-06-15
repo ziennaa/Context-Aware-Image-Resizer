@@ -400,6 +400,76 @@ vector<vector<pixel>> standard_resize(vector<vector<pixel>> &pixels_orig,
         }
     return resized;
 }
+// find k lowest energy seams without removing them
+// returns list of seam paths sorted by energy (cheapest first)
+vector<vector<int>> find_k_seams(
+    vector<vector<pixel>> &pixels, int w, int h,
+    vector<vector<bool>> &mask, vector<vector<bool>> &protect_mask,
+    int k, bool use_forward, bool use_sobel)
+{
+    // work on copies so we don't modify originals
+    auto pix_copy = pixels;
+    auto mask_copy = mask;
+    auto prot_copy = protect_mask;
+    int cw = w;
+
+    vector<vector<int>> seams;
+
+    for (int i = 0; i < k && cw > 1; i++)
+    {
+        auto energy = use_forward ? compute_energy_forward(pix_copy, cw, h, mask_copy, prot_copy)
+                      : use_sobel ? compute_energy_sobel(pix_copy, cw, h, mask_copy, prot_copy)
+                                  : compute_energy(pix_copy, cw, h, mask_copy, prot_copy);
+        auto seam = find_seam(energy, cw, h);
+        seams.push_back(seam);
+        seam_remove(pix_copy, mask_copy, prot_copy, seam, cw, h);
+        cw--;
+    }
+
+    return seams;
+}
+
+// insert k seams to enlarge image
+void insert_seams(
+    vector<vector<pixel>> &pixels, int &w, int h,
+    vector<vector<bool>> &mask, vector<vector<bool>> &protect_mask,
+    int k, bool use_forward, bool use_sobel)
+{
+    auto seams = find_k_seams(pixels, w, h, mask, protect_mask, k, use_forward, use_sobel);
+
+    // insert seams from left to right, adjusting x positions as we go
+    // each insertion shifts pixels to the right, so track offsets
+    vector<int> offsets(h, 0); // how many pixels inserted so far at each row
+
+    for (auto &seam : seams)
+    {
+        // adjust seam x positions based on previous insertions
+        vector<int> adjusted(h);
+        for (int y = 0; y < h; y++)
+            adjusted[y] = seam[y] + offsets[y];
+
+        // insert pixel at adjusted position in each row
+        for (int y = 0; y < h; y++)
+        {
+            int x = adjusted[y];
+
+            // new pixel = average of left and right neighbors
+            pixel left = pixels[y][max(x, 0)];
+            pixel right = pixels[y][min(x + 1, (int)pixels[y].size() - 1)];
+            pixel newpx = {
+                (unsigned char)((left.r + right.r) / 2),
+                (unsigned char)((left.g + right.g) / 2),
+                (unsigned char)((left.b + right.b) / 2)};
+
+            pixels[y].insert(pixels[y].begin() + x + 1, newpx);
+            mask[y].insert(mask[y].begin() + x + 1, false);
+            protect_mask[y].insert(protect_mask[y].begin() + x + 1, false);
+
+            offsets[y]++;
+        }
+        w++;
+    }
+}
 int main(int argc, char *argv[])
 {
     if (argc < 5)
@@ -415,6 +485,8 @@ int main(int argc, char *argv[])
     bool use_sobel = false;
     bool remove_object = false;
     string mask_path = "";
+    bool upscale = false;
+    int upscale_seams = 0;
 
     //for (int i = 5; i < argc; i++)
     //{
@@ -482,6 +554,12 @@ int main(int argc, char *argv[])
         }
         else if (arg == "--forward")
             use_forward = true;
+        else if (arg == "--upscale")
+        {
+            upscale = true;
+            if (i + 1 < argc)
+                upscale_seams = stoi(argv[++i]);
+        }
         else
             mask_path = arg; // fallback for positional mask arg
     }
@@ -500,6 +578,12 @@ int main(int argc, char *argv[])
     int original_w = w;
     stbi_image_free(img);
     auto start = high_resolution_clock::now();
+    //if (upscale && upscale_seams > 0)
+    //{
+    //    cout << "Upscaling by " << upscale_seams << " seams...\n";
+    //    insert_seams(pixels, w, h, mask, protect_mask, upscale_seams, use_forward, use_sobel);
+    //    cout << "Upscale done. New width: " << w << "\n";
+    //}
     // after loading image, before loops
     if (vertical_seams >= w || horizontal_seams >= h)
     {
@@ -519,7 +603,6 @@ int main(int argc, char *argv[])
     //    if (arg != "--sobel")
     //        mask_path = arg;
     //}
-
     vector<vector<bool>> mask(h, vector<bool>(w, false));
     if (mask_path != "")
     {
@@ -606,6 +689,12 @@ int main(int argc, char *argv[])
             if (v)
                 protected_pixels++;
     cout << "Protected pixels: " << protected_pixels << "\n";
+    if (upscale && upscale_seams > 0)
+    {
+        cout << "Upscaling by " << upscale_seams << " seams...\n";
+        insert_seams(pixels, w, h, mask, protect_mask, upscale_seams, use_forward, use_sobel);
+        cout << "Upscale done. New width: " << w << "\n";
+    }
     if (remove_object && mask_path != "")
     {
         int removed = remove_object_vertical(pixels, mask, protect_mask, w, h, use_sobel, use_forward);
