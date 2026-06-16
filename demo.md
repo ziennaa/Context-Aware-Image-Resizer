@@ -42,7 +42,7 @@ Unlike standard resizing which uniformly squeezes all pixels, seam carving ident
 
 | Original | Mask (white = remove) | After Removal |
 |---|---|---|
-| ![original](images/images.jpg) | *(black canvas, white over gondola)* | ![removed](assets/objectremoved.png) |
+| ![original](images/images.jpg) | *(black canvas, white over gondola)* ![mask](images/masker.png)| ![removed](assets/objectremoved.png) |
 
 > The hot air balloon's basket gondola is removed. User creates a black PNG with white painted over the target region. Masked pixels receive energy = −10¹⁵, forcing every seam through them until the object disappears.
 
