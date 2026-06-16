@@ -8,41 +8,114 @@ Unlike standard resizing which uniformly squeezes all pixels, seam carving ident
 
 ## Demo
 
-### Content-Aware vs Standard Resize
-
-| Original | Seam Carved (−200px width) |
-|---|---|
-| ![original](assets/original_ocean.png) | ![carved](assets/carved_200.png) |
-
-> Seam carving removes flat water from the left. Both surfers stay intact. Standard resize would squish the entire image uniformly.
-
----
-
 ### Seam Carving in Action
 
 ![demo gif](assets/seam_carving.gif)
 
-> Each red line is the lowest-energy seam found by dynamic programming. Watch how seams avoid the subject and carve through the background.
+> Each red line is the lowest-energy seam found by dynamic programming.
+---
+
+### Content-Aware Resizing
+
+| Original (1916×1078) | −200px width | −200px width, −100px height |
+|---|---|---|
+| ![original](assets/original_ocean.png) | ![carved](assets/carved_200.png) | ![both](assets/carved_both.png) |
+
+> Seam carving removes flat water from the left. Both surfers stay intact across all reductions.
 
 ---
 
-### Vertical + Horizontal Seam Removal
+### Seam Insertion — Content-Aware Upscaling
 
-| Original | −200px width, −100px height |
+![upscale gif](assets/iseam_carving.gif)
+
+| Original (1916×1078) | Upscaled +400px (2316×1078) |
 |---|---|
-| ![original](assets/original_ocean.png) | ![both](assets/carved_both.png) |
+| ![original](assets/original_ocean.png) | ![upscaled](assets/upscaled_400.png) |
+
+> Seam insertion duplicates the lowest-energy seams and averages neighboring pixel colors for smooth blending. The ocean expands naturally while both surfers remain intact.
 
 ---
 
 ### Object Removal via Mask
-##### The hot air balloon's basket gondola is removed. 
 
-| Original | After Object Removal |
+| Original | Mask (white = remove) | After Removal |
+|---|---|---|
+| ![original](images/images.jpg) | *(black canvas, white over gondola)* ![mask](images/masker.png)| ![removed](assets/objectremoved.png) |
+
+> The hot air balloon's basket gondola is removed. User creates a black PNG with white painted over the target region. Masked pixels receive energy = −10¹⁵, forcing every seam through them until the object disappears.
+
+---
+
+### Object Protection via Mask
+
+| Original | Without Protection (−200, -450) | With Protection (-200, -450) |
+|---|---|---|
+| ![original](assets/energy_tomato.png) | ![backward](assets/withoutprotect.png) | ![protected](assets/withprotect.png) |
+
+> Protected pixels receive energy = +10¹⁵, making seams avoid them entirely. The tomatoes stay undistorted even at aggressive reductions.
+
+---
+
+### Forward Energy vs Backward Energy
+
+Forward energy (Rubinstein et al. 2008) improves on the original algorithm by penalizing seams that *create* new visible edges after removal, not just seams with low existing energy.
+
+| Backward Energy (−90px) | Forward Energy (−90px) |
 |---|---|
-| ![original](images/images.jpg) | ![removed](assets/objectremoved.png) |
+| ![backward](assets/dolphin_backward_first.png) | ![forward](assets/dolphin_forward_first.png) |
+
+> Forward energy produces smoother results — the dolphin appear rounder with less color bleeding at seam boundaries. The difference is more visible at aggressive reductions (150px+).
+
+| Backward Energy (-150px) | Forward Energy (−150x) |
+|---|---|
+| ![backward2](assets/dolphin_backward.png) | ![forward2](assets/dolphin_forward.png) |
+
+**Measured improvement  150 seams:**
+
+| Energy Function | PSNR vs Standard Resize | Time per Seam |
+|---|---|---|
+| Backward (simple gradient) | 16.421 dB | 3.20303ms |
+| Forward | 15.668 dB | 4.21506ms |
+> forward energy is slower
+> even though forward energy smoothens and blends there might be some distortion that may arise.
 
 
-> User paints a white mask over the target region on a black canvas. Masked pixels receive artificially low energy (−10¹⁵), forcing every seam through them until the object disappears.
+> Note: Lower PSNR does not indicate worse quality here — PSNR measures 
+> pixel-level similarity to standard (uniform) resize, not perceptual quality. 
+> Forward energy deliberately chooses different seam paths to avoid creating 
+> new visible edges, which diverges from standard resize but produces cleaner 
+> visual results. Forward energy is ~29% slower due to additional cost 
+> computation per pixel.
+
+---
+
+### Energy Map Visualization
+
+| Image | Energy Map |
+|---|---|
+| ![ocean](assets/original_ocean.png) | ![energy ocean](assets/energy_map_test.png) |
+
+> Bright pixels = high energy (edges, subjects = preserve). Dark pixels = low energy (flat regions = safe to remove). The flat turquoise water on the left is nearly pure black — exactly where seams carve through.
+
+---
+
+### Energy Function Comparison: Simple Gradient vs Sobel
+
+| Original | Simple Gradient (−50px) | Sobel Filter (−50px) |
+|---|---|---|
+| ![penguin](assets/original_penguin.jpg) | ![simple](assets/output_simple.png) | ![sobel](assets/output_simple_sobel.png) |
+
+| | Simple Gradient | Sobel Filter |
+|---|---|---|
+| Neighbors sampled | 4 | 8 |
+| Diagonal edge detection | Weak | Strong (weighted kernels) |
+| Speed (287×175) | 0.60ms/seam | 0.70ms/seam |
+| Speed (1916×1078) | 28.1ms/seam | 33.5ms/seam |
+| PSNR (287×175, 50 seams) | 11.62 dB | 11.63 dB |
+| Overhead | — | ~17-19% slower |
+
+> Sobel samples all 8 surrounding pixels using weighted kernels, making it theoretically better at diagonal edges. On high-contrast images (flat backgrounds), both methods produce near-identical results. Sobel shows marginally better edge preservation on mid-contrast textured subjects.
 
 ---
 
@@ -50,7 +123,7 @@ Unlike standard resizing which uniformly squeezes all pixels, seam carving ident
 
 ### Stage 1 — Energy Calculation
 
-Every pixel is assigned an energy value measuring how visually important it is. Pixels on edges or subject boundaries have high energy. Flat backgrounds have low energy.
+Every pixel is assigned an energy value measuring how visually important it is.
 
 ```
 dx² = (R_right − R_left)² + (G_right − G_left)² + (B_right − B_left)²
@@ -59,18 +132,10 @@ dy² = (R_down  − R_up)²  + (G_down  − G_up)²  + (B_down  − B_up)²
 energy(y, x) = sqrt(dx² + dy²)
 ```
 
-This project implements and benchmarks two energy functions:
+High energy = sharp color change = edge or important detail.  
+Low energy = flat region = safe to remove.
 
-- **Simple Gradient** — uses left/right and up/down neighbors (4 pixels)
-- **Sobel Filter** — uses all 8 surrounding pixels with weighted kernels, theoretically better at diagonal edges
-
-#### Energy Map Visualization
-
-The energy map below shows the ocean image processed through the energy function. Bright pixels = high energy (edges, subjects). Dark pixels = low energy (safe to remove).
-
-![energy map](assets/energy_map.png)
-
-#### Sobel Kernels
+#### Sobel Filter (advanced energy)
 
 ```
 Gx (horizontal edges):    Gy (vertical edges):
@@ -81,15 +146,33 @@ Gx (horizontal edges):    Gy (vertical edges):
 energy = sqrt(Gx² + Gy²)
 ```
 
+#### Forward Energy (Rubinstein et al. 2008)
+
+Unlike backward energy which measures existing pixel energy, forward energy measures the cost of new edges *created* when a seam is removed.
+
+```
+CU = |pixel[y][x+1] - pixel[y][x-1]|           (new horizontal edge created)
+CL = |pixel[y-1][x] - pixel[y][x-1]| + CU      (cost from upper-left)
+CR = |pixel[y-1][x] - pixel[y][x+1]| + CU      (cost from upper-right)
+
+dp[y][x] = min(
+    dp[y-1][x-1] + CL,
+    dp[y-1][x]   + CU,
+    dp[y-1][x+1] + CR
+)
+```
+
+This penalizes seams that leave visible artifacts after removal, producing cleaner results on structured subjects.
+
 ---
 
 ### Stage 2 — Minimum Energy Seam (Dynamic Programming)
 
 Finding the optimal seam is a classic shortest-path problem solved with DP.
 
-**Why not greedy?** A greedy approach picks the cheapest neighbor at each step. This is fast but not optimal — it gets trapped in locally cheap paths that lead to expensive pixels later.
+**Why not greedy?** Greedy picks the cheapest neighbor at each step but gets trapped in locally cheap paths that lead to expensive pixels later. DP considers all possible paths implicitly.
 
-**Why DP works:** The minimum energy seam ending at pixel (y, x) depends only on the minimum energy seam ending at one of three pixels directly above it. This is optimal substructure.
+**Why DP works:** The minimum energy seam ending at pixel (y, x) depends only on the minimum energy seam ending at one of three pixels directly above it — optimal substructure.
 
 ```
 dp[y][x] = energy[y][x] + min(
@@ -99,11 +182,11 @@ dp[y][x] = energy[y][x] + min(
 )
 ```
 
-Two tables are maintained:
-- `dp[y][x]` — minimum total energy of any seam reaching pixel (y, x) from the top
-- `parent[y][x]` — which column above gave that minimum (used for backtracking the path)
+Two tables maintained:
+- `dp[y][x]` — minimum total energy of any seam reaching (y, x) from the top
+- `parent[y][x]` — which column above gave that minimum (for path backtracking)
 
-#### Dry Run Example
+#### Dry Run
 
 ```
 Energy map:       DP table:          Parent table:
@@ -111,24 +194,22 @@ Energy map:       DP table:          Parent table:
 6   1   8         9   2   9          0   2   2
 5   2   3         7   4   5          1   1   1
 
-Minimum in last row = 4 at column 1
-Backtrack: (2,1) → parent=1 → (1,1) → parent=2 → (0,2)
-Seam path: col 2 → col 1 → col 1    Total energy = 1+1+2 = 4
+Min in last row = 4 at col 1
+Backtrack: (2,1)→(1,1)→(0,2)
+Path: col 2 → col 1 → col 1    Total energy = 1+1+2 = 4 ✓
 ```
 
 Time complexity: **O(W × H)** per seam.
 
 #### Seam Visualization
 
-The red line below shows the first seam found on the ocean image — running between the flat water and the wave boundary, avoiding both surfers entirely.
+![seam viz](assets/frame16.png)
 
-![seam visualization](frames/frame_16.png)
+> The red line shows the first seam found — it runs along the boundary between flat water and waves, avoiding both surfers entirely.
 
 ---
 
 ### Stage 3 — Seam Removal
-
-For each row, the seam pixel is deleted and everything to the right shifts left by one position. Width decreases by 1.
 
 ```cpp
 for each row y:
@@ -140,7 +221,7 @@ for each row y:
 
 ### Stage 4 — Energy Recalculation
 
-After each removal, neighboring pixels change. The full energy map is recalculated before finding the next seam.
+After each removal, neighboring pixels change. Full energy map is recalculated before the next seam.
 
 ### Stage 5 — Repeat
 
@@ -155,85 +236,89 @@ while current_width > target_width:
 
 ### Horizontal Seam Removal
 
-Horizontal seams reduce image height. The implementation transposes the pixel grid (swapping rows and columns), runs the identical vertical seam algorithm, then transposes back. Zero additional algorithm code needed.
+Height reduction uses the same algorithm. The pixel grid is transposed (rows ↔ columns), vertical seam logic runs unchanged, then the grid is transposed back. Zero additional algorithm code.
+
+### Seam Insertion (Upscaling)
+
+To enlarge an image content-aware:
+1. Find k lowest-energy seams (without removing them)
+2. Insert a new pixel beside each seam, averaged with neighbors
+3. Track insertion offsets so earlier insertions don't misalign later seams
+
+```cpp
+pixel newpx = {
+    (left.r + right.r) / 2,
+    (left.g + right.g) / 2,
+    (left.b + right.b) / 2
+};
+pixels[y].insert(pixels[y].begin() + x + 1, newpx);
+```
 
 ### Object Removal
 
-Masked pixels receive energy = −10¹⁵, making every seam pass through them until the masked region is fully consumed.
+Masked pixels receive energy = −10¹⁵, making every seam pass through them:
 
 ```cpp
 if (mask[y][x]) energy[y][x] = -1e15;
 ```
 
-The mask is a black PNG with white painted over the target region. Mask pixels and image pixels shift together during seam removal so alignment is maintained throughout.
+### Object Protection
 
----
+Protected pixels receive energy = +10¹⁵, making seams avoid them:
 
-## Energy Function Comparison
-
-| | Simple Gradient | Sobel Filter |
-|---|---|---|
-| Neighbors sampled | 4 | 8 |
-| Diagonal edge detection | Weak | Strong (weighted kernels) |
-| Speed (287×175 image) | 0.60ms/seam | 0.70ms/seam |
-| Speed (1916×1078 image) | 28.1ms/seam | 33.5ms/seam |
-| Overhead | — | ~17-19% slower |
-
-On high-contrast images (ocean, flat backgrounds), both methods produce near-identical seam paths. Sobel shows marginally better edge preservation on textured subjects like the penguin image below.
-
-| Original | Simple Gradient (−50px) | Sobel (−50px) |
-|---|---|---|
-| ![penguin](assets/original_penguin.jpg) | ![simple](assets/output_simple.png) | ![sobel](assets/output_simple_sobel.png) |
+```cpp
+if (protect_mask[y][x]) energy[y][x] = 1e15;
+```
 
 ---
 
 ## Benchmarks
 
-All benchmarks measured on Windows, Intel CPU, compiled with `g++ -O2`.
+All benchmarks on Windows, Intel CPU, `g++ -O2`.
 
 ### Seam removal time vs image size
 
 | Image Size | Seams | Time | Per Seam |
 |---|---|---|---|
-| 400 × 300 | 50 vertical | 0.061s | ~1.2ms |
 | 287 × 175 | 50 vertical | 0.030s | ~0.60ms |
+| 400 × 300 | 50 vertical | 0.061s | ~1.2ms |
 | 1916 × 1078 | 50 vertical | 1.29s | ~25.8ms |
 | 1916 × 1078 | 200 vertical | 4.93s | ~24.6ms |
-| 1916 × 1078 | 75V + 50H | 3.29s total | ~25ms |
-| 1916 × 1078 | 200V + 200H | 7.85s total | ~25ms |
+| 1916 × 1078 | 75V + 50H | 3.29s | ~25ms avg |
+| 1916 × 1078 | 200V + 200H | 7.85s | ~25ms avg |
 
-**Key observation:** Per-seam time stays roughly constant (~25ms) regardless of how many seams are removed. This confirms **O(W × H) per seam** complexity — linear in image area, as the theory predicts.
-
-The 400×300 image runs ~20x faster per seam than the 1916×1078 image. The area ratio is also ~20x, confirming linear scaling with image size.
-
-### PSNR vs Standard Resize
-
-PSNR measures pixel-level similarity between seam-carved output and standard (uniform) resize of the same dimensions. Higher = more similar to original.
-
-| Method | Image | Seams | PSNR (dB) |
-|---|---|---|---|
-| Simple Gradient | Penguin 287×175 | 50 | 11.62 |
-| Sobel | Penguin 287×175 | 50 | 11.63 |
-
-Both methods score ~11.6 dB against standard resize. This confirms that seam carving fundamentally changes the pixel selection strategy compared to uniform scaling — the energy function choice affects *where* seams go, not *how much* the image deviates from standard resize.
+**Key observation:** Per-seam time stays roughly constant (~25ms) regardless of how many seams are removed, confirming **O(W × H)** complexity. The 400×300 image is ~20x faster than 1916×1078 — the area ratio is also ~20x, confirming linear scaling.
 
 ---
 
 ## Features
 
-| Feature | Status |
-|---|---|
-| Vertical seam removal (width reduction) | done |
-| Horizontal seam removal (height reduction) | done |
-| Simple gradient energy function | done |
-| Sobel filter energy function | done |
-| Energy map visualization | done |
-| Seam path visualization (red overlay) | done |
-| Object removal via mask | done |
-| GIF frame export | done |
-| PSNR quality measurement | done |
-| CLI interface | done |
-| Input validation + error handling | done |
+| Features |
+|---|
+| Vertical seam removal (width reduction) |
+| Horizontal seam removal (height reduction) |
+| Seam insertion / content-aware upscaling |
+| Simple gradient energy function |
+| Sobel filter energy function |
+| Forward energy (Rubinstein et al. 2008) |
+| Object removal via low-energy mask |
+| Object protection via high-energy mask |
+| Energy map visualization |
+| Seam path visualization (red overlay) |
+| GIF frame export (removal + upscaling) |
+| PSNR quality measurement |
+| CLI interface with flags |
+| Input validation + error handling |
+
+---
+
+## Known Limitations
+
+- **Faces and structured subjects** — seam carving can distort faces since the energy function may route seams through them at aggressive reduction levels. Works best with a clear subject against a flat background.
+- **Large reductions** — removing more than ~30% of width/height causes visible artifacts as the algorithm exhausts low-energy seams and begins cutting into content.
+- **Upscaling artifacts** — inserting too many seams at once causes stretching in concentrated regions. Keep upscaling below ~30% of original width for best results.
+- **Textured backgrounds** — uniformly high-energy backgrounds (grass, sand, crowds) make it harder to find clean seams.
+- **Object removal quality** — works best on objects surrounded by flat uniform regions. Objects near other high-energy areas may leave artifacts.
 
 ---
 
@@ -246,21 +331,33 @@ g++ -O2 -std=c++17 src/main.cpp -o seamcarve
 # Reduce width by 200px
 ./seamcarve input.png output.png 200 0
 
-# Reduce width by 200px and height by 100px
+# Reduce width + height
 ./seamcarve input.png output.png 200 100
+
+# Upscale width by 200px (pass 0 0 for no removal)
+./seamcarve input.png output.png 0 0 --upscale 200
 
 # Use Sobel energy function
 ./seamcarve input.png output.png 200 0 --sobel
 
-# Save energy map visualization
+# Use forward energy (Rubinstein 2008)
+./seamcarve input.png output.png 200 0 --forward
+
+# Save energy map
 ./seamcarve input.png output.png 0 0 --save-energy
 
-# Save GIF frames (stitched with FFmpeg after)
+# Export GIF frames
 ./seamcarve input.png output.png 100 0 --save-frames
 ffmpeg -framerate 6 -i frames/frame_%d.png -vf "scale=960:-1" demo.gif
 
-# Object removal (provide black PNG with white over target)
-./seamcarve input.png output.png 0 0 images/mask.png --remove-object
+# Object removal (black PNG, white over target region)
+./seamcarve input.png output.png 0 0 --mask images/mask.png --remove-object
+
+# Object protection (black PNG, white over region to keep)
+./seamcarve input.png output.png 200 0 --protect images/protect.png
+
+# Combine: protect tomatoes while resizing
+./seamcarve input.png output.png 150 0 --protect images/protect.png --forward
 ```
 
 ---
@@ -270,12 +367,12 @@ ffmpeg -framerate 6 -i frames/frame_%d.png -vf "scale=960:-1" demo.gif
 ```
 seam-carving/
 ├── src/
-│   └── main.cpp          — full implementation
+│   └── main.cpp          — full implementation (~700 lines)
 ├── images/               — input images and masks
 ├── assets/               — output images for README
 ├── frames/               — GIF frame exports
-├── stb_image.h           — single-header image loading
-├── stb_image_write.h     — single-header image saving
+├── stb_image.h           — single-header image loading (no install)
+├── stb_image_write.h     — single-header image saving (no install)
 └── README.md
 ```
 
@@ -283,9 +380,9 @@ seam-carving/
 
 ## Dependencies
 
-- **stb_image** / **stb_image_write** — single-header image I/O (no installation required, drop `.h` files in root)
+- **stb_image / stb_image_write** — single-header image I/O, drop `.h` files in root, no installation
 - C++17 or later
-- FFmpeg (optional, for GIF generation only)
+- FFmpeg (optional, GIF generation only)
 - No other external dependencies
 
 ---
@@ -293,15 +390,18 @@ seam-carving/
 ## References
 
 1. Avidan, S., & Shamir, A. (2007). *Seam carving for content-aware image resizing*. ACM SIGGRAPH 2007. https://perso.crans.org/frenoy/matlab2012/seamcarving.pdf
-2. Trekhleb — Content-aware image resizing in JavaScript. https://trekhleb.dev/blog/2021/content-aware-image-resizing-in-javascript/
-3. Wikipedia — Seam carving. https://en.wikipedia.org/wiki/Seam_carving
-4. Zucconi, A. (2023). Seam Carving in Unity. https://www.alanzucconi.com/2023/05/29/seam-carving/
-5. Avik Das - Real-world dynamic programming: seam carving. https://avikdas.com/2019/05/14/real-world-dynamic-programming-seam-carving.html
+2. Rubinstein, M., Shamir, A., & Avidan, S. (2008). *Improved seam carving for video retargeting*. ACM SIGGRAPH 2008.
+3. Trekhleb — Content-aware image resizing in JavaScript. https://trekhleb.dev/blog/2021/content-aware-image-resizing-in-javascript/
+4. Wikipedia — Seam carving. https://en.wikipedia.org/wiki/Seam_carving
+5. Zucconi, A. (2023). Seam Carving in Unity. https://www.alanzucconi.com/2023/05/29/seam-carving/
+6. Avik Das — Real-world dynamic programming: seam carving. https://avikdas.com/2019/05/14/real-world-dynamic-programming-seam-carving.html
+7. https://github.com/axu2/improved-seam-carving
+
 ---
 
 ## Future Work
 
-- **Forward energy** — penalize seams that *create* new edges on removal, not just those with low existing energy (Rubinstein et al. 2008)
-- **Seam insertion** — enlarge images by duplicating low-energy seams with averaged colors
-- **Optimal seam ordering** — find the globally optimal sequence of horizontal and vertical removals (described in original paper)
-- **Partial energy recalculation** — only recompute energy around the removed seam instead of the full image, reducing per-seam cost
+- **Optimal seam ordering** — find the globally optimal sequence of H and V removals (described in original paper as a separate DP problem)
+- **Partial energy recalculation** — only recompute energy around the removed seam instead of full image, reducing per-seam cost significantly
+- **Web version** — TypeScript port with React frontend for browser-based interactive demo (in progress on `web` branch)
+- **GIF support** — apply seam carving to animated GIFs frame-by-frame with consistent seam paths
