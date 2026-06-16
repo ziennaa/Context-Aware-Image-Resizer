@@ -196,7 +196,7 @@ Time complexity: **O(W × H)** per seam.
 
 #### Seam Visualization
 
-![seam viz](assets/seam_viz.png)
+![seam viz](assets/frame16.png)
 
 > The red line shows the first seam found — it runs along the boundary between flat water and waves, avoiding both surfers entirely.
 
