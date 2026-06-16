@@ -51,7 +51,7 @@ Unlike standard resizing which uniformly squeezes all pixels, seam carving ident
 
 | Original | Without Protection (−200, -450) | With Protection (-200, -450) |
 |---|---|---|
-| ![original](assets/energy_tomato.png) | ![backward](assets/withoutprotected.png) | ![protected](assets/withprotect.png) |
+| ![original](assets/energy_tomato.png) | ![backward](assets/withoutprotect.png) | ![protected](assets/withprotect.png) |
 
 > Protected pixels receive energy = +10¹⁵, making seams avoid them entirely. The tomatoes stay undistorted even at aggressive reductions.
 
@@ -79,6 +79,14 @@ Forward energy (Rubinstein et al. 2008) improves on the original algorithm by pe
 | Forward | 15.668 dB | 4.21506ms |
 > forward energy is slower
 > even though forward energy smoothens and blends there might be some distortion that may arise.
+
+
+> Note: Lower PSNR does not indicate worse quality here — PSNR measures 
+> pixel-level similarity to standard (uniform) resize, not perceptual quality. 
+> Forward energy deliberately chooses different seam paths to avoid creating 
+> new visible edges, which diverges from standard resize but produces cleaner 
+> visual results. Forward energy is ~29% slower due to additional cost 
+> computation per pixel.
 
 ---
 
@@ -285,7 +293,7 @@ All benchmarks on Windows, Intel CPU, `g++ -O2`.
 
 ## Features
 
-| Feature |
+| Features |
 |---|
 | Vertical seam removal (width reduction) |
 | Horizontal seam removal (height reduction) |
