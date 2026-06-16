@@ -12,8 +12,7 @@ Unlike standard resizing which uniformly squeezes all pixels, seam carving ident
 
 ![demo gif](assets/seam_carving.gif)
 
-> Each red line is the lowest-energy seam found by dynamic programming. Watch how seams avoid the surfers and carve through the flat water background.
-
+> Each red line is the lowest-energy seam found by dynamic programming.
 ---
 
 ### Content-Aware Resizing
@@ -50,9 +49,9 @@ Unlike standard resizing which uniformly squeezes all pixels, seam carving ident
 
 ### Object Protection via Mask
 
-| Original | Without Protection (−150px) | With Protection (−150px) |
+| Original | Without Protection (−200, -450) | With Protection (-200, -450) |
 |---|---|---|
-| ![original](assets/energy_tomato.png) | ![backward](assets/backward_150.png) | ![protected](assets/protected_150.png) |
+| ![original](assets/energy_tomato.png) | ![backward](assets/withoutprotected.png) | ![protected](assets/withprotect.png) |
 
 > Protected pixels receive energy = +10¹⁵, making seams avoid them entirely. The tomatoes stay undistorted even at aggressive reductions.
 
@@ -281,15 +280,6 @@ All benchmarks on Windows, Intel CPU, `g++ -O2`.
 | 1916 × 1078 | 200V + 200H | 7.85s | ~25ms avg |
 
 **Key observation:** Per-seam time stays roughly constant (~25ms) regardless of how many seams are removed, confirming **O(W × H)** complexity. The 400×300 image is ~20x faster than 1916×1078 — the area ratio is also ~20x, confirming linear scaling.
-
-### Forward vs Backward Energy
-
-| Energy | Image | Seams | PSNR (dB) | Time/seam |
-|---|---|---|---|---|
-| Backward (simple) | Tomato 500×750 | 150 | 19.84 | 4.24ms |
-| Forward | Tomato 500×750 | 150 | 20.06 | 5.37ms |
-| Simple gradient | Penguin 287×175 | 50 | 11.62 | 0.60ms |
-| Sobel | Penguin 287×175 | 50 | 11.63 | 0.70ms |
 
 ---
 
