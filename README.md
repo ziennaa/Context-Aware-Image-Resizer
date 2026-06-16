@@ -387,6 +387,24 @@ seam-carving/
 
 ---
 
+## Known Limitations
+
+- **Faces and complex subjects** — seam carving can distort faces and human figures 
+  since the energy function treats them as high-energy regions but seams can still 
+  clip through them at aggressive reduction levels. Works best on images with a 
+  clear subject against a flat background.
+- **Large reductions** — removing more than ~30% of width/height causes visible 
+  artifacts as the algorithm runs out of low-energy seams and starts cutting into 
+  content regions.
+- **Textured backgrounds** — highly textured backgrounds (grass, sand, crowds) 
+  have uniformly high energy, making it harder for the algorithm to find clean seams.
+- **Object removal quality** — removal works best on objects surrounded by flat, 
+  uniform background. Objects near other high-energy regions may leave artifacts.
+- **Performance** — runs on CPU, so large images (>2MP) take several seconds per 
+  seam removal in the browser.
+
+---
+
 ## References
 
 1. Avidan, S., & Shamir, A. (2007). *Seam carving for content-aware image resizing*. ACM SIGGRAPH 2007. https://perso.crans.org/frenoy/matlab2012/seamcarving.pdf
