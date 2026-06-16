@@ -62,11 +62,11 @@ Unlike standard resizing which uniformly squeezes all pixels, seam carving ident
 
 Forward energy (Rubinstein et al. 2008) improves on the original algorithm by penalizing seams that *create* new visible edges after removal, not just seams with low existing energy.
 
-| | Backward Energy (−150px) | Forward Energy (−150px) |
-|---|---|---|
-| **Tomato** | ![backward](pp.png) | ![forward](pp1.png) |
+| Backward Energy (−90px) | Forward Energy (−90px) |
+|---|---|
+| ![backward](assets/dolphin_backward_first.png) | ![forward](assets/dolphin_forward_first.png) |
 
-> Forward energy produces smoother results — the tomatoes appear rounder with less color bleeding at seam boundaries. The difference is more visible at aggressive reductions (200px+).
+> Forward energy produces smoother results — the dolphin appear rounder with less color bleeding at seam boundaries. The difference is more visible at aggressive reductions (150px+).
 
 | Backward Energy (-150px) | Forward Energy (−150x) |
 |---|---|
