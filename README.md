@@ -53,7 +53,7 @@ Unlike standard resizing which uniformly squeezes all pixels, seam carving ident
 |---|---|---|
 | ![original](assets/energy_tomato.png) | ![backward](assets/withoutprotect.png) | ![protected](assets/withprotect.png) |
 
-> Protected pixels receive energy = +10¹⁵, making seams avoid them entirely. The tomatoes stay undistorted even at aggressive reductions.
+> Protected pixels receive energy = +10¹⁵, making seams avoid them entirely. -some distortion may arise even though at high energy zones or after seam removal, above images are with backward energy
 
 ---
 
