@@ -64,22 +64,22 @@ Forward energy (Rubinstein et al. 2008) improves on the original algorithm by pe
 
 | | Backward Energy (−150px) | Forward Energy (−150px) |
 |---|---|---|
-| **Tomato** | ![backward](assets/backward_150.png) | ![forward](assets/forward_150.png) |
+| **Tomato** | ![backward](pp.png) | ![forward](pp1.png) |
 
 > Forward energy produces smoother results — the tomatoes appear rounder with less color bleeding at seam boundaries. The difference is more visible at aggressive reductions (200px+).
 
-| | Backward Energy (−200px) | Forward Energy (−200px) |
-|---|---|---|
-| **Tomato** | ![backward200](assets/out_backward.png) | ![forward200](assets/out_forward.png) |
+| Backward Energy (-150px) | Forward Energy (−150x) |
+|---|---|
+| ![backward2](assets/dolphin_backward.png) | ![forward2](assets/dolphin_forward.png) |
 
-**Measured improvement (500×750 tomato image, 150 seams):**
+**Measured improvement  150 seams:**
 
 | Energy Function | PSNR vs Standard Resize | Time per Seam |
 |---|---|---|
-| Backward (simple gradient) | 19.84 dB | 4.24ms |
-| Forward | 20.06 dB | 5.37ms |
-
-> Forward energy scores +0.22 dB higher PSNR at ~27% slower per seam. The improvement is measurable and visually consistent on structured subjects.
+| Backward (simple gradient) | 16.421 dB | 3.20303ms |
+| Forward | 15.668 dB | 4.21506ms |
+> forward energy is slower
+> even though forward energy smoothens and blends there might be some distortion that may arise.
 
 ---
 
@@ -87,7 +87,7 @@ Forward energy (Rubinstein et al. 2008) improves on the original algorithm by pe
 
 | Image | Energy Map |
 |---|---|
-| ![ocean](assets/original_ocean.png) | ![energy ocean](assets/energy_map.png) |
+| ![ocean](assets/original_ocean.png) | ![energy ocean](assets/energy_map_test.png) |
 
 > Bright pixels = high energy (edges, subjects = preserve). Dark pixels = low energy (flat regions = safe to remove). The flat turquoise water on the left is nearly pure black — exactly where seams carve through.
 
@@ -295,22 +295,22 @@ All benchmarks on Windows, Intel CPU, `g++ -O2`.
 
 ## Features
 
-| Feature | Status |
-|---|---|
-| Vertical seam removal (width reduction) | ✅ |
-| Horizontal seam removal (height reduction) | ✅ |
-| Seam insertion / content-aware upscaling | ✅ |
-| Simple gradient energy function | ✅ |
-| Sobel filter energy function | ✅ |
-| Forward energy (Rubinstein et al. 2008) | ✅ |
-| Object removal via low-energy mask | ✅ |
-| Object protection via high-energy mask | ✅ |
-| Energy map visualization | ✅ |
-| Seam path visualization (red overlay) | ✅ |
-| GIF frame export (removal + upscaling) | ✅ |
-| PSNR quality measurement | ✅ |
-| CLI interface with flags | ✅ |
-| Input validation + error handling | ✅ |
+| Feature |
+|---|
+| Vertical seam removal (width reduction) |
+| Horizontal seam removal (height reduction) |
+| Seam insertion / content-aware upscaling |
+| Simple gradient energy function |
+| Sobel filter energy function |
+| Forward energy (Rubinstein et al. 2008) |
+| Object removal via low-energy mask |
+| Object protection via high-energy mask |
+| Energy map visualization |
+| Seam path visualization (red overlay) |
+| GIF frame export (removal + upscaling) |
+| PSNR quality measurement |
+| CLI interface with flags |
+| Input validation + error handling |
 
 ---
 
