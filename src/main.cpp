@@ -9,11 +9,10 @@
 #include <bits/stdc++.h>
 using namespace std;
 using namespace chrono;
-// vector for 2d arrays
-// cmath for sqrt() and pow()
+// cmath used for sqrt() and pow()
 struct pixel{
     unsigned char r, g, b;
-    // pixel DS custom
+    // datastructure for custom pixel
 };
 // stb - actual pixel data comes as flat 1d array not 2d grid
 // image visually looks like this:
@@ -80,9 +79,9 @@ vector<vector<double>> compute_energy(vector<vector<pixel>> &pixels, int w, int 
             double dx = pow(right.r - left.r, 2) + pow(right.g - left.g, 2) + pow(right.b - left.b, 2);
             double dy = pow(down.r - up.r, 2) + pow(down.g - up.g, 2) + pow(down.b - up.b, 2);
             energy[y][x] = sqrt(dy+dx);
-            // MASK PRIORITY: marked pixels get ultra-low energy to force seams through them
+            // MASK PRIORITY marked pixels get ultralow energy to force seams through them
             if (mask[y][x])
-                energy[y][x] = -1e15;  // Much lower than normal energy values
+                energy[y][x] = -1e15;  // much lower than normal energy values
             if (protect_mask[y][x])
                 energy[y][x] = 1e15;
         }
@@ -134,13 +133,6 @@ vector<vector<double>> compute_energy_sobel(vector<vector<pixel>> &pixels, int w
             pixel bm = pixels[min(y + 1, h - 1)][x];                 // bottom-middle
             pixel br = pixels[min(y + 1, h - 1)][min(x + 1, w - 1)]; // bottom-right
 
-            // sobel kernels applied to each channel
-            // Gx kernel: -1 0 +1 / -2 0 +2 / -1 0 +1
-            // Gy kernel: +1 +2 +1 / 0 0 0 / -1 -2 -1
-            //auto gx = [&](int l, int r)
-            //{ return -l + r; };
-            //auto gy = [&](int t, int b)
-            //{ return -t + b; };
 
             double gx_r = -tl.r - 2 * ml.r - bl.r + tr.r + 2 * mr.r + br.r;
             double gx_g = -tl.g - 2 * ml.g - bl.g + tr.g + 2 * mr.g + br.g;
@@ -156,7 +148,7 @@ vector<vector<double>> compute_energy_sobel(vector<vector<pixel>> &pixels, int w
             energy[y][x] = sqrt(gx_mag + gy_mag);
             // MASK PRIORITY: marked pixels get ultra-low energy to force seams through them
             if (mask[y][x])
-                energy[y][x] = -1e15;  // Much lower than normal energy values
+                energy[y][x] = -1e15;  // much lower than normal energy values
             if (protect_mask[y][x])
                 energy[y][x] = 1e15;
         }
@@ -232,7 +224,7 @@ vector<vector<double>> compute_energy_forward(
     // find_seam will pick minimum from last row as usual
     return dp;
 }
-// dp logic
+// dplogic
 vector<int> find_seam(vector<vector<double>> &energy, int w, int h)
 {
     vector<vector<double>> dp(h, vector<double>(w, 1e18));
@@ -342,7 +334,7 @@ int remove_object_vertical(
 
         auto seam = find_seam(energy, w, h);
         
-        // DEBUG: Check if seam passes through any masked pixels
+        // this is for debugging
         int masked_in_seam = 0;
         for (int y = 0; y < h; y++)
         {
@@ -360,7 +352,7 @@ int remove_object_vertical(
              << " | masked left: " << after 
              << " | masked pixels in seam: " << masked_in_seam << "\n";
 
-        // safety: avoid infinite loop if something weird happens
+        // for safety check it avoid infinite loop if something weird happens
         if (after >= before)
         {
             cout << "Warning: mask is not reducing. Stopping.\n";
@@ -497,56 +489,16 @@ int main(int argc, char *argv[])
     string output_path = argv[2];
     int vertical_seams = stoi(argv[3]);
     int horizontal_seams = stoi(argv[4]);
-    // after parsing argv, add:
+    // after parsing argv:
     bool use_sobel = false;
     bool remove_object = false;
     string mask_path = "";
     bool upscale = false;
     int upscale_seams = 0;
-
-    //for (int i = 5; i < argc; i++)
-    //{
-    //    string arg = argv[i];
-//
-    //    if (arg == "--sobel")
-    //    {
-    //        use_sobel = true;
-    //    }
-    //    else if (arg == "--remove-object")
-    //    {
-    //        remove_object = true;
-    //    }
-    //    
-    //    else
-    //    {
-    //        mask_path = arg;
-    //    }
-    //}
     bool save_energy = false;
     bool save_frames = false;
     bool use_forward = false;
-    // in arg parsing:
-    //else if (arg == "--save-frames") save_frames = true;
     string protect_path = "";
-    //for (int i = 5; i < argc; i++)
-    //{
-    //    string arg = argv[i];
-    //    if (arg == "--sobel")
-    //        use_sobel = true;
-    //    else if (arg == "--remove-object")
-    //        remove_object = true;
-    //    else if (arg == "--save-energy")
-    //        save_energy = true;
-    //    else if (arg == "--save-frames")
-    //        save_frames = true;
-    //    else if (arg == "--protect")
-    //    {
-    //        if (i + 1 < argc)
-    //            protect_path = argv[++i];
-    //    }
-    //    else
-    //        mask_path = arg;
-    //}
     for (int i = 5; i < argc; i++)
     {
         string arg = argv[i];
@@ -564,7 +516,7 @@ int main(int argc, char *argv[])
                 protect_path = argv[++i]; // consume next arg as protect path
         }
         else if (arg == "--mask")
-        { // ← add explicit --mask flag
+        { // add explicit --mask flag
             if (i + 1 < argc)
                 mask_path = argv[++i];
         }
@@ -608,8 +560,6 @@ int main(int argc, char *argv[])
         cout << "Max horizontal seams: " << h - 1 << "\n";
         return 1;
     }
-    // in main, add mask_path as optional 6th argument (or 7th if --sobel is 6th)
-    // simplest: just hardcode mask loading for now, add CLI later
 
     // load mask if provided
     //string mask_path = "";
@@ -631,8 +581,8 @@ int main(int argc, char *argv[])
                 {
                     int i = (y * w + x) * 3;
                     // white pixel in mask = remove this region
-                    // Check if pixel is bright enough to be considered "marked for removal"
-                    // Use a more lenient threshold: any channel > 128 counts
+                    // checking if pixel is bright enough to be considered "marked for removal"
+                    // using a more lenient threshold: any channel > 128 counts
                     unsigned char max_channel = max({mask_img[i], mask_img[i + 1], mask_img[i + 2]});
                     if (max_channel > 128)
                         mask[y][x] = true;
@@ -764,9 +714,9 @@ int main(int argc, char *argv[])
             w--;
         }
 
-        cout << "Vertical done. Width: " << w << "\n";
+        cout<<"Vertical done. Width: "<< w << "\n";
     }
-    cout << "Vertical done. Width: " << w << "\n";
+    cout<<"Vertical done. Width: "<<w<< "\n";
     auto v_end = high_resolution_clock::now();
     double v_time = duration<double>(v_end-start).count();
     if (vertical_seams > 0)
@@ -818,26 +768,6 @@ int main(int argc, char *argv[])
     //    }
     //}
 //
-    //vector<vector<bool>> protect_mask(h, vector<bool>(w, false));
-    //if (protect_path != "")
-    //{
-    //    int mw, mh, mc;
-    //    unsigned char *pm = stbi_load(protect_path.c_str(), &mw, &mh, &mc, 3);
-    //    if (pm && mw == w && mh == h)
-    //    {
-    //        for (int y = 0; y < h; y++)
-    //            for (int x = 0; x < w; x++)
-    //            {
-    //                int i = (y * w + x) * 3;
-    //                unsigned char max_ch = max({pm[i], pm[i + 1], pm[i + 2]});
-    //                if (max_ch > 128)
-    //                    protect_mask[y][x] = true;
-    //            }
-    //        stbi_image_free(pm);
-    //        cout << "Protect mask loaded: " << protect_path << "\n";
-    //    }
-    //}
-    // save energy map if requested
     if (save_energy)
     {
         auto energy_map = compute_energy(pixels, w, h, mask, protect_mask);
